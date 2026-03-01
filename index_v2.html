@@ -1,0 +1,3316 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>不良率分析システム</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', 'Yu Gothic UI', sans-serif;
+      background: #f0f4f8;
+      color: #1a202c;
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(135deg, #1e4e8c 0%, #2b6cb0 60%, #3182ce 100%);
+      color: white;
+      padding: 1.1rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      box-shadow: 0 3px 12px rgba(0,0,0,0.25);
+    }
+    header .icon { font-size: 1.8rem; line-height: 1; }
+    header h1 { font-size: 1.4rem; font-weight: 800; letter-spacing: 0.02em; }
+    header .subtitle { font-size: 0.78rem; opacity: 0.75; margin-top: 0.15rem; letter-spacing: 0.06em; }
+
+    .container { max-width: 1100px; margin: 0 auto; padding: 1.5rem 1.5rem 3rem; }
+
+    /* ===== Stats ===== */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    .stat-card {
+      background: white; border-radius: 12px;
+      padding: 1rem 1.25rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+      border-top: 4px solid; text-align: center;
+    }
+    .stat-card.blue   { border-top-color: #3182ce; }
+    .stat-card.green  { border-top-color: #38a169; }
+    .stat-card.purple { border-top-color: #805ad5; }
+    .stat-card.red    { border-top-color: #e53e3e; }
+    .stat-value { font-size: 1.75rem; font-weight: 800; line-height: 1.1; margin-bottom: 0.2rem; }
+    .stat-card.blue   .stat-value { color: #2b6cb0; }
+    .stat-card.green  .stat-value { color: #276749; }
+    .stat-card.purple .stat-value { color: #553c9a; }
+    .stat-card.red    .stat-value { color: #c53030; }
+    .stat-label { font-size: 0.72rem; color: #718096; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    /* ===== Tabs ===== */
+    .tabs {
+      display: flex; background: white; border-radius: 12px;
+      padding: 0.4rem; box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+      margin-bottom: 1.25rem; gap: 0.4rem;
+    }
+    .tab-btn {
+      flex: 1; padding: 0.65rem; border: none; background: transparent;
+      border-radius: 8px; cursor: pointer; font-size: 0.82rem;
+      font-weight: 600; color: #718096; transition: all 0.18s;
+    }
+    .tab-btn.active { background: #2b6cb0; color: white; box-shadow: 0 2px 8px rgba(43,108,176,0.35); }
+    .tab-btn:hover:not(.active) { background: #edf2f7; color: #2d3748; }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* ===== Card ===== */
+    .card {
+      background: white; border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+      padding: 1.5rem; margin-bottom: 1.25rem;
+    }
+    .card-title {
+      font-size: 0.95rem; font-weight: 700; color: #2d3748;
+      margin-bottom: 1.1rem; padding-bottom: 0.7rem;
+      border-bottom: 2px solid #e2e8f0;
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+
+    /* ===== Form ===== */
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem; }
+    .form-group { display: flex; flex-direction: column; gap: 0.35rem; }
+    .form-group label { font-size: 0.75rem; font-weight: 700; color: #4a5568; text-transform: uppercase; letter-spacing: 0.06em; }
+    .form-group input, .form-group select {
+      padding: 0.6rem 0.8rem; border: 2px solid #e2e8f0; border-radius: 8px;
+      font-size: 0.9rem; color: #1a202c; outline: none; background: white;
+      transition: border-color 0.18s, box-shadow 0.18s;
+    }
+    .form-group input:focus, .form-group select:focus {
+      border-color: #3182ce; box-shadow: 0 0 0 3px rgba(49,130,206,0.15);
+    }
+
+    /* ===== Defect rows ===== */
+    .defect-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.65rem; }
+    .defect-header-label { font-size: 0.75rem; font-weight: 700; color: #4a5568; text-transform: uppercase; letter-spacing: 0.06em; }
+    #defect-rows { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .defect-row { display: grid; grid-template-columns: 1fr 110px auto; gap: 0.5rem; align-items: center; }
+    .defect-row input {
+      padding: 0.5rem 0.7rem; border: 2px solid #e2e8f0; border-radius: 8px;
+      font-size: 0.875rem; color: #1a202c; outline: none;
+      transition: border-color 0.18s, box-shadow 0.18s;
+    }
+    .defect-row input:focus { border-color: #3182ce; box-shadow: 0 0 0 3px rgba(49,130,206,0.15); }
+
+    /* ===== Buttons ===== */
+    .btn {
+      padding: 0.55rem 1.1rem; border: none; border-radius: 8px;
+      cursor: pointer; font-size: 0.85rem; font-weight: 700;
+      transition: all 0.18s; white-space: nowrap;
+    }
+    .btn-sm { padding: 0.35rem 0.7rem; font-size: 0.78rem; }
+    .btn-primary   { background: #2b6cb0; color: white; }
+    .btn-primary:hover   { background: #2c5282; box-shadow: 0 2px 8px rgba(43,108,176,0.35); }
+    .btn-secondary { background: #edf2f7; color: #4a5568; }
+    .btn-secondary:hover { background: #e2e8f0; }
+    .btn-danger    { background: #fff5f5; color: #c53030; border: 1px solid #fed7d7; }
+    .btn-danger:hover    { background: #fed7d7; }
+    .btn-excel     { background: #fffbeb; color: #92400e; border: 1px solid #fcd34d; font-weight: 700; }
+    .btn-excel:hover     { background: #fef3c7; }
+    .btn-add       { background: #ebf8ff; color: #2a4365; border: 1px solid #bee3f8; }
+    .btn-add:hover       { background: #bee3f8; }
+
+    .form-actions {
+      display: flex; justify-content: flex-end; gap: 0.75rem;
+      margin-top: 1.1rem; padding-top: 1rem; border-top: 1px solid #e2e8f0;
+    }
+
+    /* ===== Alert ===== */
+    .alert {
+      padding: 0.7rem 1rem; border-radius: 8px; margin-bottom: 1rem;
+      font-size: 0.875rem; font-weight: 600; display: none;
+      animation: slideDown 0.2s ease;
+    }
+    .alert-success { background: #f0fff4; color: #276749; border: 1px solid #9ae6b4; }
+    .alert-error   { background: #fff5f5; color: #c53030; border: 1px solid #fc8181; }
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ===== Table ===== */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.855rem; }
+    th {
+      background: #f7fafc; padding: 0.65rem 0.85rem; text-align: left;
+      font-size: 0.72rem; font-weight: 700; color: #4a5568;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      border-bottom: 2px solid #e2e8f0; white-space: nowrap;
+    }
+    td { padding: 0.65rem 0.85rem; border-bottom: 1px solid #f0f4f8; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f7fafc; }
+
+    /* ===== Badges ===== */
+    .badge {
+      display: inline-block; padding: 0.18rem 0.6rem;
+      border-radius: 999px; font-size: 0.76rem; font-weight: 700;
+    }
+    .badge-ok     { background: #f0fff4; color: #276749; border: 1px solid #9ae6b4; }
+    .badge-warn   { background: #fffff0; color: #744210; border: 1px solid #f6e05e; }
+    .badge-ng     { background: #fff5f5; color: #c53030; border: 1px solid #fc8181; }
+    .badge-day    { background: #fefcbf; color: #744210; }
+    .badge-night  { background: #ebf4ff; color: #2a4365; }
+    .badge-csv    { background: #e9d8fd; color: #553c9a; font-size: 0.7rem; padding: 0.12rem 0.45rem; }
+    .badge-manual { background: #e6fffa; color: #234e52; font-size: 0.7rem; padding: 0.12rem 0.45rem; }
+    .badge-excel  { background: #fffbeb; color: #92400e; font-size: 0.7rem; padding: 0.12rem 0.45rem; }
+
+    /* ===== CSV Drop area ===== */
+    .drop-area {
+      border: 2px dashed #cbd5e0; border-radius: 12px; padding: 2.5rem;
+      text-align: center; cursor: pointer; transition: all 0.2s; background: #f7fafc;
+    }
+    .drop-area:hover, .drop-area.drag-over { border-color: #3182ce; background: #ebf8ff; }
+    .drop-area .drop-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+    .drop-area p { color: #718096; font-size: 0.875rem; margin-bottom: 0.4rem; }
+    .drop-area .hint { font-size: 0.78rem; color: #a0aec0; }
+
+    /* ===== CSV info / filter rows ===== */
+    .info-box {
+      background: #f0f9ff; border: 1px solid #bee3f8; border-radius: 8px;
+      padding: 0.85rem 1rem; margin-bottom: 1.1rem;
+      font-size: 0.84rem; color: #2a4365; line-height: 1.7;
+    }
+    .ctrl-row {
+      display: flex; align-items: center; gap: 0.75rem;
+      margin-bottom: 1rem; font-size: 0.85rem; color: #4a5568; flex-wrap: wrap;
+    }
+    .ctrl-row select {
+      padding: 0.4rem 0.7rem; border: 2px solid #e2e8f0; border-radius: 8px;
+      font-size: 0.85rem; outline: none; background: white; cursor: pointer;
+    }
+    .ctrl-row select:focus { border-color: #3182ce; }
+
+    /* ===== Chart ===== */
+    .chart-wrap { position: relative; height: 360px; }
+
+    /* ===== Empty state ===== */
+    .empty-state { text-align: center; padding: 3rem 1rem; color: #a0aec0; }
+    .empty-state .empty-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+    .empty-state p { font-size: 0.875rem; }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 700px) {
+      .form-grid  { grid-template-columns: 1fr 1fr; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .defect-row { grid-template-columns: 1fr 90px auto; }
+      .tab-btn    { font-size: 0.75rem; padding: 0.55rem 0.3rem; }
+    }
+    @media (max-width: 480px) {
+      .form-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ===== KPI Dashboard ===== */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    .kpi-card {
+      background: white; border-radius: 12px;
+      padding: 1.1rem 1.25rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+      text-align: center;
+    }
+    .kpi-title {
+      font-size: 0.72rem; color: #718096; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem;
+    }
+    .kpi-value { font-size: 1.55rem; font-weight: 800; line-height: 1.1; }
+
+    /* ===== Print ===== */
+    @media print {
+      body { background: white !important; }
+      header, .stats-grid, .tabs, .alert, .no-print { display: none !important; }
+      .panel { display: none !important; }
+      #panel-report { display: block !important; }
+      .container { max-width: 100% !important; padding: 0.5rem !important; }
+      .print-hide { display: none !important; }
+      .kpi-grid { display: none !important; }
+      .card { box-shadow: none !important; border: 1px solid #e2e8f0 !important; }
+    }
+    @media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+
+    /* ===== Path Import ===== */
+    .path-import-box {
+      background: #f0f9ff; border: 1px solid #bee3f8; border-radius: 10px;
+      padding: 0.9rem 1.1rem; margin-top: 1rem;
+    }
+    .path-import-label {
+      font-size: 0.78rem; font-weight: 700; color: #2a4365;
+      text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.65rem;
+    }
+    .path-import-row {
+      display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+    }
+    .path-import-row + .path-import-row { margin-top: 0.5rem; }
+    .path-folder-display {
+      flex: 2; min-width: 200px; padding: 0.48rem 0.75rem;
+      border: 2px solid #bee3f8; border-radius: 8px; font-size: 0.8rem;
+      color: #2a4365; background: #ebf8ff; font-style: italic;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .path-import-row input[type="text"] {
+      flex: 1; min-width: 160px; padding: 0.48rem 0.75rem;
+      border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.875rem;
+      color: #1a202c; outline: none; background: white;
+      transition: border-color 0.18s, box-shadow 0.18s;
+    }
+    .path-import-row input[type="text"]:focus {
+      border-color: #3182ce; box-shadow: 0 0 0 3px rgba(49,130,206,0.15);
+    }
+    .path-import-row select {
+      padding: 0.48rem 0.75rem; border: 2px solid #e2e8f0; border-radius: 8px;
+      font-size: 0.875rem; outline: none; background: white; cursor: pointer;
+    }
+    .path-import-row select:focus { border-color: #3182ce; }
+    .btn-folder { background: #f0fff4; color: #276749; border: 1px solid #9ae6b4; }
+    .btn-folder:hover { background: #c6f6d5; }
+    .btn-load { background: #2b6cb0; color: white; border: none; }
+    .btn-load:hover { background: #2c5282; box-shadow: 0 2px 8px rgba(43,108,176,0.35); }
+
+    /* ===== Date Range Filter ===== */
+    .date-range-row {
+      display: flex; align-items: center; gap: 0.5rem;
+      flex-wrap: wrap; margin-bottom: 0.85rem;
+      padding: 0.55rem 0.9rem; background: #f0f4f8;
+      border-radius: 8px; border: 1px solid #e2e8f0;
+      font-size: 0.85rem; color: #4a5568;
+    }
+    .date-range-row label { font-weight: 700; font-size: 0.78rem; color: #4a5568; white-space: nowrap; }
+    .date-range-row input[type="date"] {
+      padding: 0.35rem 0.6rem; border: 2px solid #e2e8f0;
+      border-radius: 8px; font-size: 0.85rem; outline: none; background: white;
+      transition: border-color 0.18s;
+    }
+    .date-range-row input[type="date"]:focus { border-color: #3182ce; }
+    .date-range-row .tilde { color: #a0aec0; font-size: 0.95rem; font-weight: 600; }
+
+    /* ===== Countermeasure Advice Panel ===== */
+    .advice-summary {
+      background: linear-gradient(135deg, #ebf8ff, #f0fff4);
+      border: 1px solid #bee3f8; border-radius: 10px;
+      padding: 1rem 1.25rem; margin-bottom: 1.25rem;
+    }
+    .advice-summary-title { font-size: 0.95rem; font-weight: 800; color: #2b6cb0; margin-bottom: 0.5rem; }
+    .advice-summary-stats { display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: 0.85rem; color: #2d3748; margin-bottom: 0.4rem; }
+    .advice-summary-stats strong { color: #2b6cb0; }
+    .advice-hint { font-size: 0.78rem; color: #718096; }
+
+    .advice-card {
+      background: white; border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+      margin-bottom: 1.1rem; overflow: hidden;
+      border-left: 4px solid #3182ce;
+    }
+    .advice-card-generic { border-left-color: #a0aec0; }
+    .advice-card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.85rem 1.25rem; background: #f7fafc;
+      border-bottom: 1px solid #e2e8f0; flex-wrap: wrap; gap: 0.5rem;
+    }
+    .advice-rank { display: flex; align-items: center; gap: 0.5rem; }
+    .advice-rank-num { font-size: 1.1rem; font-weight: 800; min-width: 2rem; }
+    .advice-defect-name { font-size: 1rem; font-weight: 700; color: #1a202c; }
+    .advice-meta { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+    .advice-count { font-size: 0.85rem; color: #4a5568; font-weight: 600; }
+    .advice-badge {
+      display: inline-block; padding: 0.18rem 0.65rem;
+      border-radius: 999px; font-size: 0.72rem; font-weight: 700;
+    }
+    .priority-high { background: #fff5f5; color: #c53030; border: 1px solid #fc8181; }
+    .priority-medium { background: #fffff0; color: #744210; border: 1px solid #f6e05e; }
+
+    .advice-bar-wrap { height: 5px; background: #e2e8f0; }
+    .advice-bar { height: 5px; background: linear-gradient(90deg, #3182ce, #63b3ed); border-radius: 0 3px 3px 0; transition: width 0.4s ease; }
+
+    .advice-body { padding: 1rem 1.25rem; }
+    .advice-section { margin-bottom: 0.85rem; }
+    .advice-section-title {
+      font-size: 0.75rem; font-weight: 700; color: #4a5568;
+      text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem;
+    }
+    .advice-direction {
+      font-size: 0.9rem; font-weight: 700; color: #2b6cb0;
+      padding: 0.5rem 0.85rem; background: #ebf8ff; border-radius: 7px;
+      border-left: 3px solid #3182ce;
+    }
+    .advice-list {
+      padding-left: 1.35rem; margin: 0;
+      font-size: 0.855rem; color: #2d3748; line-height: 1.75;
+    }
+    .action-list li { margin-bottom: 0.1rem; }
+    .advice-checkpoints { margin-top: 0.75rem; }
+    .advice-check-row { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.35rem; }
+    .advice-check-chip {
+      display: inline-block; padding: 0.2rem 0.65rem;
+      background: #f0fff4; color: #276749; border: 1px solid #9ae6b4;
+      border-radius: 999px; font-size: 0.75rem; font-weight: 600;
+    }
+    .advice-unmatched-chip {
+      display: inline-block; padding: 0.1rem 0.5rem;
+      background: #f7fafc; color: #718096; border: 1px solid #e2e8f0;
+      border-radius: 999px; font-size: 0.75rem; margin: 0.1rem;
+    }
+    .advice-action-plan {
+      background: white; border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+      padding: 1.25rem; margin-top: 1.1rem;
+      border-top: 4px solid #805ad5;
+    }
+    .advice-steps {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.75rem; margin-top: 0.75rem;
+    }
+    .advice-step {
+      display: flex; flex-direction: column; align-items: center;
+      text-align: center; gap: 0.5rem;
+      padding: 0.75rem 0.5rem; background: #f7fafc;
+      border-radius: 10px; font-size: 0.8rem; color: #2d3748; line-height: 1.5;
+    }
+    .advice-step-num {
+      width: 2rem; height: 2rem; border-radius: 50%;
+      background: #805ad5; color: white;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 1rem; flex-shrink: 0;
+    }
+    @media (max-width: 700px) {
+      .advice-steps { grid-template-columns: repeat(2, 1fr); }
+      .advice-summary-stats { gap: 0.75rem; }
+    }
+
+    /* ===== Baseline Dashboard ===== */
+    .baseline-period-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 1rem; margin-bottom: 1.25rem;
+    }
+    .baseline-period-card {
+      background: white; border-radius: 10px;
+      border: 2px solid #e2e8f0;
+      padding: 0.9rem 1rem; text-align: center;
+    }
+    .baseline-period-card.current { border-color: #3182ce; background: #ebf8ff; }
+    .baseline-period-label { font-size: 0.72rem; font-weight: 700; color: #4a5568; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem; }
+    .baseline-period-value { font-size: 1.6rem; font-weight: 800; color: #2d3748; line-height: 1.15; }
+    .baseline-period-sub { font-size: 0.78rem; color: #718096; margin-top: 0.2rem; }
+    .baseline-diff { font-size: 0.8rem; font-weight: 700; margin-top: 0.3rem; }
+    .diff-up { color: #c53030; } .diff-down { color: #276749; } .diff-flat { color: #718096; }
+    .baseline-type-row {
+      display: grid; grid-template-columns: 2fr 80px 80px 1fr 130px;
+      align-items: center; gap: 0.5rem;
+      padding: 0.55rem 0.85rem; border-bottom: 1px solid #f0f4f8; font-size: 0.855rem;
+    }
+    .baseline-type-row:last-child { border-bottom: none; }
+    .baseline-type-row.bl-header {
+      background: #f7fafc; font-size: 0.72rem; font-weight: 700;
+      color: #4a5568; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 2px solid #e2e8f0;
+    }
+    .baseline-bar-cell { display: flex; align-items: center; gap: 0.4rem; }
+    .baseline-mini-bar { flex: 1; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+    .baseline-mini-fill { height: 8px; border-radius: 4px; }
+    .target-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+    .target-row {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.4rem 0.65rem; background: #f7fafc; border-radius: 8px; border: 1px solid #e2e8f0;
+    }
+    .target-row label { font-size: 0.8rem; font-weight: 600; color: #4a5568; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .target-row input[type="number"] { width: 68px; padding: 0.3rem 0.45rem; border: 2px solid #e2e8f0; border-radius: 6px; font-size: 0.85rem; text-align: right; outline: none; }
+    .target-row input[type="number"]:focus { border-color: #3182ce; }
+    .target-unit { font-size: 0.75rem; color: #718096; white-space: nowrap; }
+    @media (max-width: 700px) {
+      .baseline-period-grid { grid-template-columns: 1fr; }
+      .target-form-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ===== 5Why Records ===== */
+    .fivewhy-card {
+      background: white; border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+      margin-bottom: 0.85rem; overflow: hidden;
+      border-left: 4px solid #805ad5;
+    }
+    .fivewhy-card.status-done { border-left-color: #38a169; }
+    .fivewhy-card.status-in-progress { border-left-color: #d69e2e; }
+    .fivewhy-header {
+      display: flex; align-items: center; gap: 0.65rem;
+      padding: 0.75rem 1rem; cursor: pointer;
+      flex-wrap: wrap; user-select: none;
+    }
+    .fivewhy-header:hover { background: #f7fafc; }
+    .fivewhy-title { font-weight: 700; font-size: 0.9rem; flex: 1; color: #1a202c; }
+    .fivewhy-meta { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; font-size: 0.78rem; color: #718096; margin-left: auto; }
+    .fivewhy-body { padding: 1rem 1.1rem; display: none; border-top: 1px solid #f0f4f8; }
+    .fivewhy-body.open { display: block; }
+    .why-chain { margin-bottom: 0.85rem; }
+    .why-item { display: flex; gap: 0.5rem; margin-bottom: 0.15rem; }
+    .why-indent { margin-left: 1rem; }
+    .why-label { font-size: 0.75rem; font-weight: 700; color: #805ad5; white-space: nowrap; padding-top: 0.2rem; min-width: 3.5rem; }
+    .why-text { font-size: 0.875rem; color: #2d3748; line-height: 1.6; }
+    .countermeasure-box {
+      background: #f0fff4; border: 1px solid #9ae6b4; border-radius: 8px;
+      padding: 0.7rem 0.9rem; margin-bottom: 0.65rem;
+    }
+    .countermeasure-title { font-size: 0.72rem; font-weight: 700; color: #276749; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem; }
+    .countermeasure-content { font-size: 0.875rem; color: #2d3748; margin-bottom: 0.35rem; }
+    .countermeasure-meta { display: flex; gap: 0.75rem; flex-wrap: wrap; font-size: 0.78rem; color: #4a5568; }
+    .fivewhy-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+    .badge-status-open { background: #fff5f5; color: #c53030; border: 1px solid #fc8181; }
+    .badge-status-in-progress { background: #fffff0; color: #744210; border: 1px solid #f6e05e; }
+    .badge-status-done { background: #f0fff4; color: #276749; border: 1px solid #9ae6b4; }
+
+    /* ===== Modal ===== */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      z-index: 1000; display: none; align-items: flex-start;
+      justify-content: center; padding: 2rem 1rem; overflow-y: auto;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: white; border-radius: 14px; width: 100%; max-width: 680px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.25); flex-shrink: 0;
+    }
+    .modal-header {
+      padding: 1rem 1.5rem; border-bottom: 2px solid #e2e8f0;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .modal-title { font-size: 1rem; font-weight: 800; color: #1a202c; }
+    .modal-close { background: none; border: none; font-size: 1.3rem; cursor: pointer; color: #718096; padding: 0.2rem 0.5rem; border-radius: 6px; line-height: 1; }
+    .modal-close:hover { background: #f0f4f8; }
+    .modal-body { padding: 1.1rem 1.5rem; }
+    .modal-footer { padding: 0.9rem 1.5rem; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 0.75rem; }
+    .modal-label { font-size: 0.75rem; font-weight: 700; color: #4a5568; text-transform: uppercase; letter-spacing: 0.06em; display: block; margin-bottom: 0.3rem; }
+    .modal-input {
+      width: 100%; padding: 0.52rem 0.75rem; border: 2px solid #e2e8f0;
+      border-radius: 8px; font-size: 0.875rem; outline: none; color: #1a202c;
+      transition: border-color 0.18s;
+    }
+    .modal-input:focus { border-color: #805ad5; box-shadow: 0 0 0 3px rgba(128,90,213,0.12); }
+    .why-block-wrap { background: #faf5ff; border-radius: 10px; padding: 0.85rem 1rem; margin-bottom: 0.75rem; }
+    .why-input-row { margin-bottom: 0.5rem; }
+    .why-input-label { font-size: 0.72rem; font-weight: 700; color: #805ad5; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2rem; }
+    .why-input-row textarea {
+      width: 100%; padding: 0.45rem 0.7rem; border: 2px solid #e9d8fd;
+      border-radius: 8px; font-size: 0.875rem; color: #1a202c;
+      resize: vertical; min-height: 48px; font-family: inherit; outline: none;
+      transition: border-color 0.18s; background: white;
+    }
+    .why-input-row textarea:focus { border-color: #805ad5; }
+    .why-arrow-row { text-align: center; color: #b794f4; font-size: 1rem; margin: -0.15rem 0; line-height: 1; }
+
+    /* ===== iPhone / Small Screen Optimization ===== */
+    @media (max-width: 430px) {
+      /* Header */
+      header { padding: 0.85rem 1rem; gap: 0.65rem; }
+      header h1 { font-size: 1.1rem; }
+      header .subtitle { font-size: 0.7rem; }
+
+      /* Container */
+      .container { padding: 0.85rem 0.75rem 2.5rem; }
+
+      /* Tabs: 横スクロール（9タブが潰れない） */
+      .tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+      .tabs::-webkit-scrollbar { display: none; }
+      .tab-btn { flex: 0 0 auto; white-space: nowrap; font-size: 0.78rem; padding: 0.6rem 0.8rem; min-height: 44px; }
+
+      /* Stats */
+      .stat-value { font-size: 1.4rem; }
+
+      /* KPI */
+      .kpi-value { font-size: 1.3rem; }
+
+      /* Cards */
+      .card { padding: 1rem 0.85rem; }
+
+      /* Charts */
+      .chart-wrap { height: 240px; }
+
+      /* Buttons: iPhone推奨タッチターゲット44px */
+      .btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+      .btn-sm { min-height: 36px; }
+
+      /* Form actions: ボタンを均等幅に */
+      .form-actions .btn { flex: 1; }
+
+      /* Baseline: 5列テーブルを横スクロール */
+      #baseline-content { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .baseline-type-row { min-width: 500px; }
+
+      /* Advice steps */
+      .advice-steps { grid-template-columns: repeat(2, 1fr); }
+
+      /* Drop area */
+      .drop-area { padding: 1.5rem 1rem; }
+
+      /* Path import */
+      .path-import-row { flex-direction: column; }
+      .path-folder-display { min-width: unset; }
+
+      /* Modal: ボトムシートスタイル */
+      .modal-overlay { padding: 0; align-items: flex-end; }
+      .modal-box { border-radius: 16px 16px 0 0; max-height: 92vh; display: flex; flex-direction: column; }
+      .modal-header { padding: 0.85rem 1rem; }
+      .modal-body { overflow-y: auto; padding: 0.85rem 1rem; flex: 1; }
+      .modal-footer { padding: 0.75rem 1rem; }
+
+      /* Modal内グリッド: 1列に */
+      .modal-grid-2, .modal-grid-3 { grid-template-columns: 1fr !important; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="icon">📊</div>
+  <div>
+    <h1>不良率分析システム</h1>
+    <div class="subtitle">DEFECT RATE ANALYSIS</div>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="alert" id="alert"></div>
+
+  <!-- Stats (4 cards) -->
+  <div class="stats-grid">
+    <div class="stat-card blue">
+      <div class="stat-value" id="stat-records">0</div>
+      <div class="stat-label">記録数</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-value" id="stat-defects">0</div>
+      <div class="stat-label">総不良数</div>
+    </div>
+    <div class="stat-card purple">
+      <div class="stat-value" id="stat-types">0</div>
+      <div class="stat-label">不良種別数</div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-value" id="stat-defect-rate">--</div>
+      <div class="stat-label">平均不良率</div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('input')">✏️ 手動入力</button>
+    <button class="tab-btn" onclick="switchTab('csv')">📂 CSV取込</button>
+    <button class="tab-btn" onclick="switchTab('trend')">📈 トレンド</button>
+    <button class="tab-btn" onclick="switchTab('pareto')">📊 パレート図</button>
+    <button class="tab-btn" onclick="switchTab('analysis')">📋 分析</button>
+    <button class="tab-btn" onclick="switchTab('report')">📄 日報・比較</button>
+    <button class="tab-btn" onclick="switchTab('advice')">💡 対策アドバイス</button>
+    <button class="tab-btn" onclick="switchTab('baseline')">📊 ベースライン</button>
+    <button class="tab-btn" onclick="switchTab('fivewhy')">🔎 5Why記録</button>
+  </div>
+
+  <!-- ===== Panel: Manual Input ===== -->
+  <div class="panel active" id="panel-input">
+    <div class="card">
+      <div class="card-title">✏️ 新規データ入力</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>日付</label>
+          <input type="date" id="inp-date">
+        </div>
+        <div class="form-group">
+          <label>シフト</label>
+          <select id="inp-shift">
+            <option value="">-- 選択 --</option>
+            <option value="昼">昼</option>
+            <option value="夜">夜</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>生産数（任意）</label>
+          <input type="number" id="inp-production" min="1" placeholder="例: 1000">
+        </div>
+      </div>
+      <div class="defect-header">
+        <span class="defect-header-label">不良種別</span>
+        <button class="btn btn-add btn-sm" onclick="addDefectRow()">+ 行を追加</button>
+      </div>
+      <div id="defect-rows"></div>
+      <div class="form-actions">
+        <button class="btn btn-secondary" onclick="resetForm()">リセット</button>
+        <button class="btn btn-primary" onclick="saveRecord()">💾 保存</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">📄 データ一覧</div>
+      <div id="table-manual"></div>
+    </div>
+  </div>
+
+  <!-- ===== Panel: CSV Import ===== -->
+  <div class="panel" id="panel-csv">
+    <div class="card">
+      <div class="card-title">📂 CSVファイル取込</div>
+
+      <div class="info-box">
+        <strong>CSVフォーマット（1行1不良）</strong><br>
+        A列＝日付 &nbsp;／&nbsp; B列＝シフト（昼 or 夜） &nbsp;／&nbsp; C列＝不良内容 &nbsp;／&nbsp; D列＝発生個数 &nbsp;／&nbsp; <strong>F列＝総生産数</strong><br>
+        ヘッダー行は自動スキップ。同じ日付＋シフトの行を集計して1レコードに変換します。F列の生産数は各直で同じ値が入っている前提で先頭行の値を使用します。
+      </div>
+
+      <div class="ctrl-row">
+        <label for="csv-encoding">文字コード：</label>
+        <select id="csv-encoding">
+          <option value="utf-8">UTF-8</option>
+          <option value="shift-jis">Shift-JIS（Excel保存）</option>
+        </select>
+      </div>
+
+      <div class="drop-area" id="drop-area"
+           onclick="document.getElementById('csv-file-input').click()">
+        <div class="drop-icon">📂</div>
+        <p>クリックしてCSVを選択、またはドラッグ＆ドロップ</p>
+        <div class="hint">.csv ファイル対応</div>
+      </div>
+      <input type="file" id="csv-file-input" accept=".csv" style="display:none">
+
+      <div id="csv-preview-area" style="margin-top:1.25rem"></div>
+
+      <!-- 品番別 Excel ダイレクト取込 -->
+      <hr style="border:none;border-top:1px solid #e2e8f0;margin:1.5rem 0">
+      <div class="card-title" style="font-size:0.95rem;margin-bottom:0.5rem">📊 品番別Excelダイレクト取込</div>
+      <div class="info-box" style="background:#fffff0;border-color:#d69e2e">
+        <strong>対応フォーマット：</strong>各品番の集計シートをExcelから直接取込みます。<br>
+        6行目＝金型番号 ／ 7行目＝鋳造ロット（末尾D=昼/N=夜） ／ 8行目＝生産数 ／ C列＝不良内容（9〜33行目）
+      </div>
+      <div id="part-btn-area" style="display:flex;gap:0.75rem;flex-wrap:wrap;margin-bottom:1rem"></div>
+      <input type="file" id="part-excel-input" accept=".xlsx,.xls,.xlsm" style="display:none">
+
+      <!-- パス指定取込 -->
+      <div class="path-import-box">
+        <div class="path-import-label" id="path-import-label">📁 パス指定取込（フォルダを一度設定 → ファイル名入力 → ボタン一つで読み込み）</div>
+        <div class="path-import-row">
+          <button class="btn btn-folder btn-sm" onclick="selectExcelFolder()">📁 フォルダを設定</button>
+          <div class="path-folder-display" id="excel-folder-path">フォルダ未設定</div>
+        </div>
+        <div id="excel-folder-status" style="font-size:0.8rem;color:#c53030;margin:0.3rem 0 0;display:none"></div>
+        <div class="path-import-row" style="margin-top:0.5rem">
+          <select id="path-part-select"></select>
+          <input type="text" id="excel-filename" placeholder="ファイル名（例: 集計表.xlsx）">
+          <button class="btn btn-load btn-sm" onclick="loadExcelByFilename()">▶ 読み込む</button>
+        </div>
+      </div>
+
+      <div id="lot-preview-area"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        📄 データ一覧（全件）
+        <button class="btn btn-danger btn-sm" style="margin-left:auto"
+                onclick="clearAllRecords()">🗑 全件削除</button>
+      </div>
+      <div id="table-all"></div>
+    </div>
+  </div>
+
+  <!-- ===== Panel: Trend ===== -->
+  <div class="panel" id="panel-trend">
+    <div class="card">
+      <div class="card-title">📈 トレンドグラフ（日別）</div>
+      <div class="date-range-row">
+        <label>期間：</label>
+        <input type="date" id="trend-date-from" onchange="renderTrendChart()">
+        <span class="tilde">〜</span>
+        <input type="date" id="trend-date-to" onchange="renderTrendChart()">
+        <button class="btn btn-sm btn-secondary" onclick="clearDateFilter('trend')">全期間</button>
+      </div>
+      <div class="ctrl-row">
+        <label>表示：</label>
+        <select id="trend-mode" onchange="renderTrendChart()">
+          <option value="count">不良数（件）</option>
+          <option value="rate">不良率（%）</option>
+        </select>
+        <label style="margin-left:0.75rem">シフト：</label>
+        <select id="trend-shift" onchange="renderTrendChart()">
+          <option value="all">全て（昼・夜を色分け）</option>
+          <option value="昼">昼のみ</option>
+          <option value="夜">夜のみ</option>
+        </select>
+      </div>
+      <div id="trend-note" style="font-size:0.78rem;color:#a0aec0;margin-bottom:0.75rem;display:none">
+        ※ 生産数が未入力のレコード（CSV取込分など）は不良率を算出できないため除外されます
+      </div>
+      <div class="chart-wrap"><canvas id="trend-canvas"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ===== Panel: Pareto ===== -->
+  <div class="panel" id="panel-pareto">
+    <div class="card">
+      <div class="card-title">📊 パレート図（不良種別）</div>
+      <div class="date-range-row">
+        <label>期間：</label>
+        <input type="date" id="pareto-date-from" onchange="renderParetoChart()">
+        <span class="tilde">〜</span>
+        <input type="date" id="pareto-date-to" onchange="renderParetoChart()">
+        <button class="btn btn-sm btn-secondary" onclick="clearDateFilter('pareto')">全期間</button>
+      </div>
+      <div class="ctrl-row">
+        <label>シフト：</label>
+        <select id="pareto-shift" onchange="renderParetoChart()">
+          <option value="all">全て</option>
+          <option value="昼">昼のみ</option>
+          <option value="夜">夜のみ</option>
+        </select>
+      </div>
+      <div class="chart-wrap"><canvas id="pareto-canvas"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ===== Panel: Analysis ===== -->
+  <div class="panel" id="panel-analysis">
+
+    <!-- Date range filter (applies to all charts in this panel) -->
+    <div class="card" style="padding:0.85rem 1.25rem">
+      <div class="date-range-row" style="margin-bottom:0">
+        <label>期間：</label>
+        <input type="date" id="analysis-date-from" onchange="renderAnalysisPanel()">
+        <span class="tilde">〜</span>
+        <input type="date" id="analysis-date-to" onchange="renderAnalysisPanel()">
+        <button class="btn btn-sm btn-secondary" onclick="clearDateFilter('analysis')">全期間</button>
+      </div>
+    </div>
+
+    <!-- Shift comparison table -->
+    <div class="card">
+      <div class="card-title">☀️🌙 昼夜シフト比較表</div>
+      <div id="shift-compare-table"></div>
+    </div>
+
+    <!-- Control chart -->
+    <div class="card">
+      <div class="card-title">📉 管理図（p管理図）</div>
+      <div class="ctrl-row">
+        <label>シフト：</label>
+        <select id="ctrl-shift" onchange="renderControlChart()">
+          <option value="all">全て</option>
+          <option value="昼">昼のみ</option>
+          <option value="夜">夜のみ</option>
+        </select>
+      </div>
+      <div id="ctrl-note" style="font-size:0.78rem;color:#718096;margin-bottom:0.75rem;display:none"></div>
+      <div class="chart-wrap"><canvas id="ctrl-canvas"></canvas></div>
+    </div>
+
+  </div>
+
+  <!-- ===== Panel: Report ===== -->
+  <div class="panel" id="panel-report">
+
+    <!-- KPI Comparison Dashboard -->
+    <div class="card no-print">
+      <div class="card-title">
+        📊 前日比・週次比較ダッシュボード
+        <span style="margin-left:auto;display:flex;align-items:center;gap:0.5rem">
+          <label style="font-size:0.82rem;font-weight:600;color:#4a5568">基準日：</label>
+          <input type="date" id="report-date" onchange="renderReport()"
+                 style="padding:0.35rem 0.6rem;border:2px solid #e2e8f0;border-radius:8px;font-size:0.85rem;outline:none">
+        </span>
+      </div>
+      <div id="kpi-dashboard"></div>
+    </div>
+
+    <!-- Printable Daily Report -->
+    <div class="card">
+      <div class="card-title print-hide">
+        📄 品質日報レポート
+        <button class="btn btn-primary btn-sm" onclick="window.print()" style="margin-left:auto">🖨 印刷</button>
+      </div>
+      <div id="report-content"></div>
+    </div>
+
+  </div>
+
+  <!-- ===== Panel: Countermeasure Advice ===== -->
+  <div class="panel" id="panel-advice">
+    <div class="card">
+      <div class="card-title">💡 対策アドバイス
+        <button class="btn btn-sm btn-secondary" onclick="renderAdvicePanel()" style="margin-left:auto">🔄 更新</button>
+      </div>
+      <div id="advice-content">
+        <div class="empty-state"><div class="empty-icon">📭</div><p>データを読み込むと対策アドバイスが表示されます</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Panel: Baseline Dashboard ===== -->
+  <div class="panel" id="panel-baseline">
+    <div class="card">
+      <div class="card-title">📊 ベースライン比較ダッシュボード
+        <button class="btn btn-sm btn-secondary" onclick="renderBaselinePanel()" style="margin-left:auto">🔄 更新</button>
+      </div>
+      <div id="baseline-content">
+        <div class="empty-state"><div class="empty-icon">📊</div><p>データを読み込むと比較が表示されます</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Panel: 5Why Records ===== -->
+  <div class="panel" id="panel-fivewhy">
+    <div class="card">
+      <div class="card-title">🔎 5Why記録シート
+        <div style="margin-left:auto;display:flex;align-items:center;gap:0.6rem">
+          <select id="fivewhy-filter" onchange="render5WhyPanel()"
+                  style="padding:0.35rem 0.6rem;border:2px solid #e2e8f0;border-radius:8px;font-size:0.82rem;outline:none;background:white">
+            <option value="all">全て</option>
+            <option value="open">未着手</option>
+            <option value="in-progress">対応中</option>
+            <option value="done">完了</option>
+          </select>
+          <button class="btn btn-sm btn-primary" onclick="open5WhyEditor(null)">＋ 新規作成</button>
+        </div>
+      </div>
+      <div id="fivewhy-content">
+        <div class="empty-state"><div class="empty-icon">📋</div><p>5Why記録がありません。「＋ 新規作成」から追加してください。</p></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<!-- ===== 5Why Editor Modal ===== -->
+<div class="modal-overlay" id="fivewhy-modal" onclick="if(event.target===this)close5WhyEditor()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">🔎 5Why記録の編集</div>
+      <button class="modal-close" onclick="close5WhyEditor()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom:0.75rem">
+        <label class="modal-label">タイトル（必須）</label>
+        <input type="text" id="modal-title-input" class="modal-input" placeholder="例：射出成形工程の傷問題">
+      </div>
+      <div class="modal-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:0.65rem;margin-bottom:0.75rem">
+        <div>
+          <label class="modal-label">不良種別</label>
+          <input type="text" id="modal-defect-type" class="modal-input" placeholder="例：傷、変形">
+        </div>
+        <div>
+          <label class="modal-label">不良レコードに紐付け</label>
+          <select id="modal-record-select" class="modal-input" style="cursor:pointer">
+            <option value="">（紐付けなし）</option>
+          </select>
+        </div>
+      </div>
+      <div class="why-block-wrap">
+        <div id="modal-whys-container"></div>
+      </div>
+      <div style="margin-bottom:0.75rem">
+        <label class="modal-label" style="color:#276749">✅ 対策・処置内容</label>
+        <textarea id="modal-countermeasure" class="modal-input"
+                  style="resize:vertical;min-height:60px;font-family:inherit;background:#f0fff4;border-color:#9ae6b4"
+                  placeholder="具体的な対策内容を記入..."></textarea>
+      </div>
+      <div class="modal-grid-3" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.6rem">
+        <div>
+          <label class="modal-label">担当者</label>
+          <input type="text" id="modal-assignee" class="modal-input" placeholder="担当者名">
+        </div>
+        <div>
+          <label class="modal-label">完了期限</label>
+          <input type="date" id="modal-deadline" class="modal-input">
+        </div>
+        <div>
+          <label class="modal-label">ステータス</label>
+          <select id="modal-status" class="modal-input" style="cursor:pointer">
+            <option value="open">未着手</option>
+            <option value="in-progress">対応中</option>
+            <option value="done">完了</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="close5WhyEditor()">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveFiveWhyRecord()">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ===========================
+  //  State
+  // ===========================
+  const STORAGE_KEY = 'defect-analysis-v2';
+  let records = [];
+  let trendChart = null;
+  let paretoChart = null;
+  let ctrlChart   = null;
+  let csvPreviewData = [];
+  let lotPreviewData = [];
+  let currentPartConfig = null;
+  let _idCounter = Date.now();
+
+  // ===========================
+  //  品番別取込設定（増やす場合はここに追記）
+  // ===========================
+  const PART_CONFIGS = [
+    {
+      id:           '10L80集計',
+      label:        '10L80',
+      sheetName:    '10L80集計',
+      rowMold:      6,   // 金型番号の行（1-indexed）
+      rowLot:       7,   // 鋳造ロットの行（1-indexed）
+      rowProd:      8,   // 生産数の行（1-indexed）
+      colItem:      3,   // C列 = 不良内容（1-indexed）
+      rowItemStart: 9,   // 不良項目 開始行
+      rowItemEnd:   33,  // 不良項目 終了行
+      colDataStart: 4    // D列から右がデータ列（1-indexed）
+    }
+    ,
+    {
+      id:           'RXO DRUM集計',
+      label:        'RXO DRUM',
+      sheetName:    '製造1課集計',
+      rowMold:      null,               // 型番行なし
+      rowDate:      2,                  // G列2行目 = 加工ロット（日付+シフト解析）
+      rowLot:       [174, 175, 176, 177, 178], // 鋳造ロット複数行（混合表示）
+      rowProd:      179,                // 生産数の行（1-indexed）
+      colItem:      3,                  // C列 = 不良内容（1-indexed）
+      rowItemStart: 48,                 // 不良項目 開始行
+      rowItemEnd:   90,                 // 不良項目 終了行
+      colDataStart: 7                   // G列から右がデータ列（1-indexed）
+    }
+    // 品番を追加する場合は上の形式でここに追記
+  ];
+
+  function genId() { return ++_idCounter; }
+
+  // Load & migrate
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ||
+                           localStorage.getItem('defect-analysis-v1') || '[]');
+    records = raw.map(r => {
+      if (r.shift === undefined) r.shift = null;
+      if (!r.source) r.source = 'manual';
+      return r;
+    });
+  } catch(e) { records = []; }
+
+  // 5Why & Target storage
+  const FIVEWHY_KEY = 'defect-5why-v1';
+  const TARGET_KEY  = 'defect-targets-v1';
+  let fiveWhyRecords = [];
+  let editingFiveWhyId = null;
+  let defectTargets = {};
+  try { fiveWhyRecords = JSON.parse(localStorage.getItem(FIVEWHY_KEY) || '[]'); } catch(e) { fiveWhyRecords = []; }
+  try { defectTargets  = JSON.parse(localStorage.getItem(TARGET_KEY)  || '{}'); } catch(e) { defectTargets = {}; }
+  function saveFiveWhyData() { localStorage.setItem(FIVEWHY_KEY, JSON.stringify(fiveWhyRecords)); }
+  function saveTargets()     { localStorage.setItem(TARGET_KEY,  JSON.stringify(defectTargets)); }
+
+  // ===========================
+  //  Boot
+  // ===========================
+  document.getElementById('inp-date').value = todayStr();
+  addDefectRow(); addDefectRow();
+  renderAllTables();
+  updateStats();
+  initDropArea();
+  renderPartButtons();
+  initPathPartSelect();
+  initFolderDisplay();
+  // Initialize report date to most recent data date (or today)
+  const _rdates = records.map(r => r.date).sort();
+  document.getElementById('report-date').value = _rdates.length ? _rdates[_rdates.length - 1] : todayStr();
+
+  // ===========================
+  //  Helpers
+  // ===========================
+  function todayStr() { return new Date().toISOString().split('T')[0]; }
+
+  function saveToStorage() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+  }
+
+  function showAlert(msg, type) {
+    const el = document.getElementById('alert');
+    el.textContent = msg;
+    el.className = 'alert alert-' + type;
+    el.style.display = 'block';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.display = 'none'; }, 3500);
+  }
+
+  function sortRecords() {
+    records.sort((a, b) =>
+      a.date.localeCompare(b.date) || (a.shift || '').localeCompare(b.shift || '')
+    );
+  }
+
+  // 同名の不良種別を合計してマージ
+  function mergeDefects(existingDefects, newDefects) {
+    const map = new Map();
+    existingDefects.forEach(d => map.set(d.type, (map.get(d.type) || 0) + d.count));
+    newDefects.forEach(d => map.set(d.type, (map.get(d.type) || 0) + d.count));
+    return [...map.entries()]
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count);
+  }
+
+  // ===========================
+  //  Tabs
+  // ===========================
+  const TAB_NAMES = ['input', 'csv', 'trend', 'pareto', 'analysis', 'report', 'advice', 'baseline', 'fivewhy'];
+
+  function switchTab(tab) {
+    document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+      btn.classList.toggle('active', TAB_NAMES[i] === tab);
+    });
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('panel-' + tab).classList.add('active');
+    if (tab === 'csv')      renderAllTables();
+    if (tab === 'trend')    renderTrendChart();
+    if (tab === 'pareto')   renderParetoChart();
+    if (tab === 'analysis') renderAnalysisPanel();
+    if (tab === 'report')   renderReport();
+    if (tab === 'advice')    renderAdvicePanel();
+    if (tab === 'baseline')  renderBaselinePanel();
+    if (tab === 'fivewhy')   render5WhyPanel();
+  }
+
+  // ===========================
+  //  Manual Input
+  // ===========================
+  function addDefectRow() {
+    const container = document.getElementById('defect-rows');
+    const row = document.createElement('div');
+    row.className = 'defect-row';
+    row.innerHTML =
+      '<input type="text" placeholder="種別名（例：傷、変形、異物）">' +
+      '<input type="number" min="0" placeholder="件数">' +
+      '<button class="btn btn-danger btn-sm" onclick="this.closest(\'.defect-row\').remove()">削除</button>';
+    container.appendChild(row);
+    row.querySelector('input').focus();
+  }
+
+  function saveRecord() {
+    const date = document.getElementById('inp-date').value;
+    const shift = document.getElementById('inp-shift').value || null;
+    const production = parseInt(document.getElementById('inp-production').value, 10) || null;
+
+    if (!date) return showAlert('日付を入力してください', 'error');
+
+    const defects = [];
+    let totalDefects = 0;
+    document.querySelectorAll('#defect-rows .defect-row').forEach(row => {
+      const inputs = row.querySelectorAll('input');
+      const type = inputs[0].value.trim();
+      const count = parseInt(inputs[1].value, 10) || 0;
+      if (type && count > 0) { defects.push({ type, count }); totalDefects += count; }
+    });
+
+    if (defects.length === 0) return showAlert('不良種別を1件以上入力してください', 'error');
+
+    // 同じ日付+シフトが既にあれば合計、なければ新規
+    const idx = records.findIndex(r =>
+      r.source === 'manual' && r.date === date && r.shift === shift
+    );
+
+    let record;
+    if (idx >= 0) {
+      const existing = records[idx];
+      const mergedDefects = mergeDefects(existing.defects, defects);
+      const mergedTotal   = mergedDefects.reduce((s, d) => s + d.count, 0);
+      const mergedProd    = production || existing.production || null;
+      if (mergedProd && mergedTotal > mergedProd) return showAlert('合計不良数が生産数を超えています', 'error');
+      record = {
+        id: existing.id,
+        date, shift,
+        production: mergedProd,
+        totalDefects: mergedTotal,
+        defectRate: mergedProd ? mergedTotal / mergedProd * 100 : null,
+        defects: mergedDefects,
+        source: 'manual'
+      };
+      records[idx] = record;
+    } else {
+      if (production && totalDefects > production) return showAlert('不良数が生産数を超えています', 'error');
+      record = {
+        id: genId(),
+        date, shift, production, totalDefects,
+        defectRate: production ? totalDefects / production * 100 : null,
+        defects,
+        source: 'manual'
+      };
+      records.push(record);
+    }
+
+    sortRecords();
+    saveToStorage();
+    renderAllTables();
+    updateStats();
+    resetForm();
+    showAlert('✓ 保存しました', 'success');
+  }
+
+  function resetForm() {
+    document.getElementById('inp-date').value = todayStr();
+    document.getElementById('inp-shift').value = '';
+    document.getElementById('inp-production').value = '';
+    document.getElementById('defect-rows').innerHTML = '';
+    addDefectRow(); addDefectRow();
+  }
+
+  function deleteRecord(id) {
+    if (!confirm('このレコードを削除しますか？')) return;
+    records = records.filter(r => r.id !== id);
+    saveToStorage();
+    renderAllTables();
+    updateStats();
+    showAlert('削除しました', 'success');
+  }
+
+  // ===========================
+  //  Stats
+  // ===========================
+  function updateStats() {
+    const totalDef = records.reduce((s, r) => s + r.totalDefects, 0);
+    const types = new Set();
+    records.forEach(r => r.defects.forEach(d => types.add(d.type)));
+
+    const withProd = records.filter(r => r.production);
+    let rateStr = '--';
+    if (withProd.length) {
+      const tp = withProd.reduce((s, r) => s + r.production, 0);
+      const td = withProd.reduce((s, r) => s + r.totalDefects, 0);
+      rateStr = (td / tp * 100).toFixed(2) + '%';
+    }
+
+    document.getElementById('stat-records').textContent    = records.length;
+    document.getElementById('stat-defects').textContent    = totalDef.toLocaleString();
+    document.getElementById('stat-types').textContent      = types.size;
+    document.getElementById('stat-defect-rate').textContent = rateStr;
+  }
+
+  // ===========================
+  //  Table rendering
+  // ===========================
+  function buildTableHTML(data) {
+    if (!data.length) {
+      return '<div class="empty-state"><div class="empty-icon">📭</div><p>データがありません</p></div>';
+    }
+    const rows = data.map(r => {
+      const shiftCell = r.shift
+        ? '<span class="badge ' + (r.shift === '昼' ? 'badge-day' : r.shift === '夜' ? 'badge-night' : '') + '">' + r.shift + '</span>'
+        : '<span style="color:#cbd5e0">--</span>';
+      const prodCell = r.production ? r.production.toLocaleString() : '<span style="color:#cbd5e0">--</span>';
+      let rateCell = '<span style="color:#cbd5e0">--</span>';
+      if (r.defectRate !== null && r.defectRate !== undefined) {
+        const bc = r.defectRate >= 5 ? 'badge-ng' : r.defectRate >= 2 ? 'badge-warn' : 'badge-ok';
+        rateCell = '<span class="badge ' + bc + '">' + r.defectRate.toFixed(2) + '%</span>';
+      }
+      const srcBadge = r.source === 'csv'
+        ? '<span class="badge badge-csv">CSV</span>'
+        : r.source === 'excel'
+          ? '<span class="badge badge-excel">' + (r.partNumber || 'Excel') + '</span>'
+          : '<span class="badge badge-manual">手動</span>';
+      const defSum = r.defects.slice(0, 3).map(d => d.type + ':' + d.count).join(', ')
+        + (r.defects.length > 3 ? '…' : '');
+
+      const moldCell = r.moldNumber ? '<span style="font-size:0.78rem;color:#718096">' + r.moldNumber + '</span>' : '';
+      return '<tr>' +
+        '<td>' + r.date + '</td>' +
+        '<td>' + shiftCell + '</td>' +
+        '<td>' + moldCell + '</td>' +
+        '<td>' + prodCell + '</td>' +
+        '<td>' + r.totalDefects.toLocaleString() + '</td>' +
+        '<td>' + rateCell + '</td>' +
+        '<td style="font-size:0.8rem;color:#718096;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + defSum + '</td>' +
+        '<td>' + srcBadge + '</td>' +
+        '<td><button class="btn btn-sm" style="background:#faf5ff;color:#553c9a;border:1px solid #d6bcfa;font-size:0.75rem" onclick="new5WhyFromRecord(' + r.id + ')">🔎 5Why</button></td>' +
+        '<td><button class="btn btn-danger btn-sm" onclick="deleteRecord(' + r.id + ')">削除</button></td>' +
+        '</tr>';
+    }).join('');
+
+    return '<div class="table-wrap"><table><thead><tr>' +
+      '<th>日付</th><th>シフト</th><th>金型</th><th>生産数</th><th>不良数</th><th>不良率</th><th>種別内訳</th><th>ソース</th><th></th><th></th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+
+  function renderAllTables() {
+    document.getElementById('table-manual').innerHTML = buildTableHTML(records);
+    const allArea = document.getElementById('table-all');
+    if (allArea) allArea.innerHTML = buildTableHTML(records);
+  }
+
+  // ===========================
+  //  CSV Drop area
+  // ===========================
+  function initDropArea() {
+    const drop  = document.getElementById('drop-area');
+    const input = document.getElementById('csv-file-input');
+
+    drop.addEventListener('dragover',  e => { e.preventDefault(); drop.classList.add('drag-over'); });
+    drop.addEventListener('dragleave', ()  => drop.classList.remove('drag-over'));
+    drop.addEventListener('drop', e => {
+      e.preventDefault();
+      drop.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) handleCSVFile(file);
+    });
+    input.addEventListener('change', () => {
+      if (input.files[0]) handleCSVFile(input.files[0]);
+    });
+  }
+
+  // ===========================
+  //  CSV Parsing
+  // ===========================
+  function handleCSVFile(file) {
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      showAlert('CSVファイルを選択してください', 'error');
+      return;
+    }
+    const encoding = document.getElementById('csv-encoding').value;
+    const reader = new FileReader();
+    reader.onload = e => processCSVText(e.target.result);
+    reader.readAsText(file, encoding);
+  }
+
+  function parseCSVLine(line) {
+    const fields = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (ch === ',' && !inQ) {
+        fields.push(cur.trim()); cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    fields.push(cur.trim());
+    return fields;
+  }
+
+  function normalizeDate(s) {
+    s = (s || '').trim();
+    let m;
+    // YYYY/MM/DD or YYYY-MM-DD or YYYY年MM月DD日
+    if ((m = s.match(/^(\d{4})[\/\-年](\d{1,2})[\/\-月](\d{1,2})/))) {
+      return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
+    }
+    // YY/MM/DD (2-digit year)
+    if ((m = s.match(/^(\d{2})[\/\-](\d{1,2})[\/\-](\d{1,2})$/))) {
+      const y = parseInt(m[1], 10) + (parseInt(m[1], 10) < 50 ? 2000 : 1900);
+      return y + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
+    }
+    return s;
+  }
+
+  function normalizeShift(s) {
+    s = (s || '').trim();
+    if (/昼|day|am|日勤/i.test(s)) return '昼';
+    if (/夜|night|pm|夜勤/i.test(s)) return '夜';
+    return s || '不明';
+  }
+
+  function processCSVText(text) {
+    // 空白行でサブグループに分割
+    const rawLines = text.split(/\r?\n/);
+    const blocks = [];
+    let cur = [];
+    for (const line of rawLines) {
+      if (line.trim() === '') {
+        if (cur.length) { blocks.push(cur); cur = []; }
+      } else {
+        cur.push(line);
+      }
+    }
+    if (cur.length) blocks.push(cur);
+    if (!blocks.length) { showAlert('CSVファイルが空です', 'error'); return; }
+
+    const groups = new Map();  // key: "date|shift"
+    let totalDataRows = 0;
+    let skipCount = 0;
+
+    blocks.forEach((block, blockIdx) => {
+      // ヘッダー検出：先頭ブロックのみ
+      let startRow = 0;
+      if (blockIdx === 0) {
+        const first = parseCSVLine(block[0]);
+        if (first.length >= 4 && isNaN(parseInt(first[3], 10))) startRow = 1;
+      }
+
+      // このブロック内の情報を収集
+      let blockProd = null;          // F列の生産数（ブロックから1つ取る）
+      const blockDefects = new Map();
+      let blockDate = null, blockShift = null, blockValid = false;
+
+      for (let i = startRow; i < block.length; i++) {
+        totalDataRows++;
+        const f = parseCSVLine(block[i]);
+        if (f.length < 4) { skipCount++; continue; }
+
+        const date  = normalizeDate(f[0]);
+        const shift = normalizeShift(f[1]);
+        const type  = f[2].trim();
+        const count = parseInt(f[3], 10);
+        const prod  = parseInt(f[5], 10) || null;  // F列 = 総生産数
+
+        if (!date || !type || isNaN(count) || count <= 0) { skipCount++; continue; }
+
+        if (!blockDate) { blockDate = date; blockShift = shift; }
+        blockDefects.set(type, (blockDefects.get(type) || 0) + count);
+        if (!blockProd && prod) blockProd = prod;  // ブロック内で1つだけ採用
+        blockValid = true;
+      }
+
+      if (!blockValid || !blockDate) return;
+
+      // 同一 date+shift のグループに累積
+      const key = blockDate + '|' + blockShift;
+      if (!groups.has(key)) {
+        groups.set(key, { date: blockDate, shift: blockShift, defects: new Map(), total: 0, production: 0 });
+      }
+      const g = groups.get(key);
+      for (const [type, count] of blockDefects) {
+        g.defects.set(type, (g.defects.get(type) || 0) + count);
+        g.total += count;
+      }
+      // 生産数はブロックごとに1つずつ合計
+      if (blockProd) g.production += blockProd;
+    });
+
+    if (!groups.size) {
+      showAlert('有効なデータが見つかりませんでした。フォーマットを確認してください', 'error');
+      return;
+    }
+
+    csvPreviewData = [];
+    for (const [, g] of groups) {
+      csvPreviewData.push({
+        date: g.date,
+        shift: g.shift,
+        production: g.production || null,
+        totalDefects: g.total,
+        defects: [...g.defects.entries()]
+          .map(([type, count]) => ({ type, count }))
+          .sort((a, b) => b.count - a.count)
+      });
+    }
+    csvPreviewData.sort((a, b) =>
+      a.date.localeCompare(b.date) || a.shift.localeCompare(b.shift)
+    );
+
+    showCSVPreview(totalDataRows, skipCount);
+  }
+
+  function showCSVPreview(totalRows, skipCount) {
+    const data = csvPreviewData;
+    const area = document.getElementById('csv-preview-area');
+
+    const summary =
+      '<div style="background:#f0fff4;border:1px solid #9ae6b4;border-radius:8px;padding:0.8rem 1rem;margin-bottom:1rem;font-size:0.875rem;color:#276749">' +
+      '<strong>' + totalRows + '行</strong>を解析 → <strong>' + data.length + '件</strong>の記録を取込予定' +
+      (skipCount > 0 ? ' &nbsp;<span style="color:#744210">（' + skipCount + '行スキップ）</span>' : '') +
+      '</div>';
+
+    const rows = data.slice(0, 30).map(r => {
+      const shiftB = r.shift === '昼'
+        ? '<span class="badge badge-day">昼</span>'
+        : r.shift === '夜' ? '<span class="badge badge-night">夜</span>' : r.shift;
+      const prodCell = r.production ? r.production.toLocaleString() : '<span style="color:#cbd5e0">--</span>';
+      const rate = r.production ? (r.totalDefects / r.production * 100).toFixed(2) + '%' : '<span style="color:#cbd5e0">--</span>';
+      const defStr = r.defects.slice(0, 4).map(d => d.type + ':' + d.count + '件').join('&nbsp;&nbsp;')
+        + (r.defects.length > 4 ? '&nbsp;…' : '');
+      return '<tr><td>' + r.date + '</td><td>' + shiftB + '</td>' +
+        '<td>' + prodCell + '</td>' +
+        '<td>' + r.totalDefects.toLocaleString() + '</td>' +
+        '<td>' + rate + '</td>' +
+        '<td style="font-size:0.8rem;color:#718096">' + defStr + '</td></tr>';
+    }).join('');
+
+    const more = data.length > 30
+      ? '<p style="text-align:center;color:#a0aec0;font-size:0.8rem;padding:0.75rem">…他 ' + (data.length - 30) + ' 件</p>'
+      : '';
+
+    area.innerHTML = summary +
+      '<div class="table-wrap"><table><thead><tr>' +
+      '<th>日付</th><th>シフト</th><th>生産数</th><th>不良数</th><th>不良率</th><th>種別内訳（上位）</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>' + more +
+      '<div class="form-actions" style="border-top:none;padding-top:0;margin-top:1rem">' +
+      '<button class="btn btn-secondary" onclick="cancelCSVImport()">キャンセル</button>' +
+      '<button class="btn btn-primary" onclick="importCSV()">✓ 取込確定</button>' +
+      '</div>';
+  }
+
+  function clearAllRecords() {
+    if (!records.length) return showAlert('削除するデータがありません', 'error');
+    if (!confirm('全 ' + records.length + ' 件のデータを削除します。この操作は元に戻せません。\n\nよろしいですか？')) return;
+    records = [];
+    saveToStorage();
+    renderAllTables();
+    updateStats();
+    showAlert('✓ 全データを削除しました', 'success');
+  }
+
+  function cancelCSVImport() {
+    csvPreviewData = [];
+    document.getElementById('csv-preview-area').innerHTML = '';
+    document.getElementById('csv-file-input').value = '';
+  }
+
+  function importCSV() {
+    if (!csvPreviewData.length) return;
+    let added = 0, updated = 0;
+    const base = Date.now();
+
+    csvPreviewData.forEach((p, i) => {
+      const idx = records.findIndex(r =>
+        r.source === 'csv' && r.date === p.date && r.shift === p.shift
+      );
+      let rec;
+      if (idx >= 0) {
+        // 既存レコードと合計
+        const existing = records[idx];
+        const mergedDefects = mergeDefects(existing.defects, p.defects);
+        const mergedTotal   = mergedDefects.reduce((s, d) => s + d.count, 0);
+        const mergedProd    = existing.production || p.production || null;
+        rec = {
+          id: existing.id,
+          date: p.date,
+          shift: p.shift,
+          production: mergedProd,
+          totalDefects: mergedTotal,
+          defectRate: mergedProd ? mergedTotal / mergedProd * 100 : null,
+          defects: mergedDefects,
+          source: 'csv'
+        };
+        records[idx] = rec;
+        updated++;
+      } else {
+        rec = {
+          id: base + i,
+          date: p.date,
+          shift: p.shift,
+          production: p.production || null,
+          totalDefects: p.totalDefects,
+          defectRate: p.production ? p.totalDefects / p.production * 100 : null,
+          defects: p.defects,
+          source: 'csv'
+        };
+        records.push(rec);
+        added++;
+      }
+    });
+
+    sortRecords();
+    saveToStorage();
+    renderAllTables();
+    updateStats();
+    cancelCSVImport();
+    showAlert('✓ 取込完了：新規 ' + added + ' 件、更新 ' + updated + ' 件', 'success');
+  }
+
+  // ===========================
+  //  Date Range Filter Helpers
+  // ===========================
+  function getDateFilteredRecords(prefix) {
+    const from = document.getElementById(prefix + '-date-from').value;
+    const to   = document.getElementById(prefix + '-date-to').value;
+    return records.filter(r =>
+      (!from || r.date >= from) && (!to || r.date <= to)
+    );
+  }
+
+  function clearDateFilter(prefix) {
+    document.getElementById(prefix + '-date-from').value = '';
+    document.getElementById(prefix + '-date-to').value = '';
+    if (prefix === 'trend')    renderTrendChart();
+    if (prefix === 'pareto')   renderParetoChart();
+    if (prefix === 'analysis') renderAnalysisPanel();
+  }
+
+  // ===========================
+  //  Trend Chart
+  // ===========================
+  function renderTrendChart() {
+    const canvas = document.getElementById('trend-canvas');
+    const mode        = document.getElementById('trend-mode').value;    // 'count' | 'rate'
+    const shiftFilter = document.getElementById('trend-shift').value;
+    const noteEl      = document.getElementById('trend-note');
+
+    const dateFiltered = getDateFilteredRecords('trend');
+    const filtered = shiftFilter === 'all'
+      ? dateFiltered
+      : dateFiltered.filter(r => r.shift === shiftFilter);
+
+    // For rate mode, we need at least one record with production count
+    const rateAvailable = filtered.some(r => r.defectRate !== null && r.defectRate !== undefined);
+    noteEl.style.display = (mode === 'rate') ? 'block' : 'none';
+
+    if (!filtered.length || (mode === 'rate' && !rateAvailable)) {
+      if (trendChart) { trendChart.destroy(); trendChart = null; }
+      showChartEmpty(canvas, mode === 'rate'
+        ? '不良率を表示するには、手動入力タブで生産数を入力してください'
+        : 'データがありません');
+      return;
+    }
+
+    hideChartEmpty(canvas);
+
+    // Dates: rate mode uses only records that have defectRate
+    const srcRecords = mode === 'rate'
+      ? filtered.filter(r => r.defectRate !== null && r.defectRate !== undefined)
+      : filtered;
+    const allDates = [...new Set(srcRecords.map(r => r.date))].sort();
+
+    // Helper: value for one cell (date × shift)
+    function cellValue(recs) {
+      if (!recs.length) return null;
+      if (mode === 'count') {
+        return recs.reduce((s, r) => s + r.totalDefects, 0);
+      } else {
+        const withRate = recs.filter(r => r.defectRate !== null && r.defectRate !== undefined);
+        if (!withRate.length) return null;
+        // Weighted average rate when multiple records on same date+shift
+        const totProd = withRate.reduce((s, r) => s + (r.production || 0), 0);
+        const totDef  = withRate.reduce((s, r) => s + r.totalDefects, 0);
+        return totProd > 0
+          ? parseFloat((totDef / totProd * 100).toFixed(3))
+          : parseFloat((withRate.reduce((s, r) => s + r.defectRate, 0) / withRate.length).toFixed(3));
+      }
+    }
+
+    const COLOR = { '昼': '#f6ad55', '夜': '#4299e1', 'その他': '#68d391', '不明': '#a0aec0' };
+    let datasets;
+
+    if (shiftFilter === 'all') {
+      const shiftKeys = [...new Set(dateFiltered.map(r => r.shift || 'その他'))].sort();
+      datasets = shiftKeys.map(sh => ({
+        label: sh,
+        data: allDates.map(d => cellValue(
+          dateFiltered.filter(r => r.date === d && (r.shift || 'その他') === sh)
+        )),
+        borderColor: COLOR[sh] || '#a0aec0',
+        backgroundColor: (COLOR[sh] || '#a0aec0') + '28',
+        borderWidth: 2.5,
+        pointRadius: 4,
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2,
+        fill: false,
+        tension: 0.3,
+        spanGaps: false
+      }));
+    } else {
+      const color = shiftFilter === '昼' ? '#f6ad55' : '#4299e1';
+      const label = mode === 'count'
+        ? '不良数（' + shiftFilter + '）'
+        : '不良率（' + shiftFilter + '）';
+      datasets = [{
+        label,
+        data: allDates.map(d => cellValue(filtered.filter(r => r.date === d))),
+        borderColor: color,
+        backgroundColor: color + '28',
+        borderWidth: 2.5,
+        pointRadius: 4,
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2,
+        fill: true,
+        tension: 0.3,
+        spanGaps: false
+      }];
+    }
+
+    const yTitle = mode === 'count' ? '不良数 (件)' : '不良率 (%)';
+    const yTicks = mode === 'rate' ? { callback: v => v + '%' } : {};
+    const tooltipLabel = mode === 'rate'
+      ? ctx => ctx.dataset.label + ': ' + (ctx.parsed.y !== null ? ctx.parsed.y + '%' : '--')
+      : ctx => ctx.dataset.label + ': ' + (ctx.parsed.y !== null ? ctx.parsed.y + '件' : '--');
+
+    if (trendChart) trendChart.destroy();
+    trendChart = new Chart(canvas, {
+      type: 'line',
+      data: { labels: allDates, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top' },
+          tooltip: {
+            mode: 'index',
+            intersect: false,
+            callbacks: { label: tooltipLabel }
+          }
+        },
+        scales: {
+          y: { beginAtZero: true, title: { display: true, text: yTitle }, ticks: yTicks },
+          x: { title: { display: true, text: '日付' } }
+        }
+      }
+    });
+  }
+
+  // ===========================
+  //  Pareto Chart
+  // ===========================
+  function renderParetoChart() {
+    const canvas = document.getElementById('pareto-canvas');
+    const shiftFilter = document.getElementById('pareto-shift').value;
+    const dateFiltered = getDateFilteredRecords('pareto');
+    const filtered = shiftFilter === 'all' ? dateFiltered : dateFiltered.filter(r => r.shift === shiftFilter);
+
+    const defMap = {};
+    filtered.forEach(r => r.defects.forEach(d => {
+      defMap[d.type] = (defMap[d.type] || 0) + d.count;
+    }));
+
+    if (!Object.keys(defMap).length) {
+      if (paretoChart) { paretoChart.destroy(); paretoChart = null; }
+      showChartEmpty(canvas, 'データがありません');
+      return;
+    }
+
+    hideChartEmpty(canvas);
+    const sorted = Object.entries(defMap).sort((a, b) => b[1] - a[1]);
+    const labels = sorted.map(([k]) => k);
+    const counts = sorted.map(([, v]) => v);
+    const total  = counts.reduce((s, c) => s + c, 0);
+    let cum = 0;
+    const cumRates = counts.map(c => { cum += c; return parseFloat((cum / total * 100).toFixed(1)); });
+
+    if (paretoChart) paretoChart.destroy();
+    paretoChart = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: '不良件数',
+            data: counts,
+            backgroundColor: 'rgba(49,130,206,0.75)',
+            borderColor: '#2b6cb0',
+            borderWidth: 1,
+            yAxisID: 'y',
+            order: 2
+          },
+          {
+            label: '累積比率 (%)',
+            data: cumRates,
+            type: 'line',
+            borderColor: '#e53e3e',
+            backgroundColor: 'transparent',
+            borderWidth: 2.5,
+            pointBackgroundColor: '#e53e3e',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            pointRadius: 5,
+            yAxisID: 'y2',
+            order: 1
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top' },
+          tooltip: { mode: 'index', intersect: false }
+        },
+        scales: {
+          y: { beginAtZero: true, position: 'left', title: { display: true, text: '不良件数' } },
+          y2: {
+            beginAtZero: true, max: 100, position: 'right',
+            title: { display: true, text: '累積比率 (%)' },
+            grid: { drawOnChartArea: false },
+            ticks: { callback: v => v + '%' }
+          }
+        }
+      }
+    });
+  }
+
+  // ===========================
+  //  Analysis Panel
+  // ===========================
+  function renderAnalysisPanel() {
+    renderShiftCompareTable();
+    renderControlChart();
+  }
+
+  // ── 昼夜シフト比較表 ──
+  function renderShiftCompareTable() {
+    const area = document.getElementById('shift-compare-table');
+    const dateFiltered = getDateFilteredRecords('analysis');
+    const allDates = [...new Set(dateFiltered.map(r => r.date))].sort();
+
+    if (!allDates.length) {
+      area.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><p>データがありません</p></div>';
+      return;
+    }
+
+    const rows = allDates.map(date => {
+      const dayRecs   = dateFiltered.filter(r => r.date === date && r.shift === '昼');
+      const nightRecs = dateFiltered.filter(r => r.date === date && r.shift === '夜');
+
+      const dayDef   = dayRecs.reduce((s, r) => s + r.totalDefects, 0);
+      const dayProd  = dayRecs.reduce((s, r) => s + (r.production || 0), 0);
+      const dayRate  = dayProd > 0 ? dayDef / dayProd * 100 : null;
+
+      const nightDef  = nightRecs.reduce((s, r) => s + r.totalDefects, 0);
+      const nightProd = nightRecs.reduce((s, r) => s + (r.production || 0), 0);
+      const nightRate = nightProd > 0 ? nightDef / nightProd * 100 : null;
+
+      const dayWorse   = dayRate !== null && nightRate !== null && dayRate > nightRate;
+      const nightWorse = dayRate !== null && nightRate !== null && nightRate > dayRate;
+
+      function rateCell(rate, worse) {
+        if (rate === null) return '<span style="color:#cbd5e0">--</span>';
+        const bc = worse ? 'badge-ng' : 'badge-ok';
+        return '<span class="badge ' + bc + '">' + rate.toFixed(2) + '%</span>';
+      }
+      function numCell(v) { return v > 0 ? v.toLocaleString() : '<span style="color:#cbd5e0">--</span>'; }
+
+      return '<tr>' +
+        '<td>' + date + '</td>' +
+        '<td>' + numCell(dayDef)  + '</td>' +
+        '<td>' + numCell(dayProd) + '</td>' +
+        '<td>' + rateCell(dayRate, dayWorse) + '</td>' +
+        '<td>' + numCell(nightDef)  + '</td>' +
+        '<td>' + numCell(nightProd) + '</td>' +
+        '<td>' + rateCell(nightRate, nightWorse) + '</td>' +
+        '</tr>';
+    }).join('');
+
+    area.innerHTML =
+      '<div class="table-wrap"><table><thead>' +
+      '<tr>' +
+        '<th rowspan="2" style="vertical-align:middle">日付</th>' +
+        '<th colspan="3" style="text-align:center;background:#fefcbf;border-bottom:1px solid #e2e8f0">☀️ 昼</th>' +
+        '<th colspan="3" style="text-align:center;background:#ebf4ff;border-bottom:1px solid #e2e8f0">🌙 夜</th>' +
+      '</tr>' +
+      '<tr>' +
+        '<th>不良数</th><th>生産数</th><th>不良率</th>' +
+        '<th>不良数</th><th>生産数</th><th>不良率</th>' +
+      '</tr>' +
+      '</thead><tbody>' + rows + '</tbody></table></div>';
+  }
+
+  // ── p管理図 ──
+  function renderControlChart() {
+    const canvas = document.getElementById('ctrl-canvas');
+    const shiftFilter = document.getElementById('ctrl-shift').value;
+    const noteEl = document.getElementById('ctrl-note');
+
+    const dateFiltered = getDateFilteredRecords('analysis');
+    let src = dateFiltered.filter(r => r.production && r.defectRate !== null && r.defectRate !== undefined);
+    if (shiftFilter !== 'all') src = src.filter(r => r.shift === shiftFilter);
+    src.sort((a, b) => a.date.localeCompare(b.date) || (a.shift || '').localeCompare(b.shift || ''));
+
+    if (src.length < 2) {
+      if (ctrlChart) { ctrlChart.destroy(); ctrlChart = null; }
+      noteEl.style.display = 'none';
+      showChartEmpty(canvas, src.length === 0
+        ? '生産数が入力されたデータがありません（CSV取込でF列、または手動入力で生産数を入力してください）'
+        : '管理図には2件以上のデータが必要です');
+      return;
+    }
+    hideChartEmpty(canvas);
+
+    // p̄（全体平均不良率）
+    const totProd = src.reduce((s, r) => s + r.production, 0);
+    const totDef  = src.reduce((s, r) => s + r.totalDefects, 0);
+    const pBar    = totDef / totProd;
+
+    const labels = src.map(r => r.date + (r.shift ? ' ' + r.shift : ''));
+    const rates  = src.map(r => parseFloat(r.defectRate.toFixed(3)));
+
+    // 各点の UCL / LCL（n が異なるため点ごとに計算）
+    const ucls = src.map(r => {
+      const s = Math.sqrt(pBar * (1 - pBar) / r.production);
+      return parseFloat(Math.min(100, (pBar + 3 * s) * 100).toFixed(3));
+    });
+    const lcls = src.map(r => {
+      const s = Math.sqrt(pBar * (1 - pBar) / r.production);
+      return parseFloat(Math.max(0, (pBar - 3 * s) * 100).toFixed(3));
+    });
+    const center = src.map(() => parseFloat((pBar * 100).toFixed(3)));
+
+    // 管理外れ判定
+    const isOut = src.map((r, i) => r.defectRate > ucls[i] || r.defectRate < lcls[i]);
+    const ptColors = isOut.map(o => o ? '#e53e3e' : '#3182ce');
+    const ptRadius = isOut.map(o => o ? 7 : 4);
+    const outCount = isOut.filter(Boolean).length;
+
+    noteEl.textContent =
+      'p̄（中心線）= ' + (pBar * 100).toFixed(3) + '%　UCL = p̄ + 3σ　LCL = p̄ − 3σ（σ は各点のnで算出）' +
+      (outCount > 0 ? '　⚠️ 管理外れ ' + outCount + ' 点（赤丸）' : '　✓ 全点管理内');
+    noteEl.style.color = outCount > 0 ? '#c53030' : '#276749';
+    noteEl.style.display = 'block';
+
+    if (ctrlChart) ctrlChart.destroy();
+    ctrlChart = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: '不良率',
+            data: rates,
+            borderColor: '#3182ce',
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            pointBackgroundColor: ptColors,
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            pointRadius: ptRadius,
+            fill: false,
+            tension: 0,
+            order: 1
+          },
+          {
+            label: 'UCL（上限）',
+            data: ucls,
+            borderColor: '#e53e3e',
+            backgroundColor: 'transparent',
+            borderWidth: 1.5,
+            borderDash: [5, 4],
+            pointRadius: 0,
+            fill: false,
+            tension: 0,
+            order: 2
+          },
+          {
+            label: '中心線 (p̄)',
+            data: center,
+            borderColor: '#38a169',
+            backgroundColor: 'transparent',
+            borderWidth: 1.5,
+            borderDash: [8, 4],
+            pointRadius: 0,
+            fill: false,
+            tension: 0,
+            order: 3
+          },
+          {
+            label: 'LCL（下限）',
+            data: lcls,
+            borderColor: '#dd6b20',
+            backgroundColor: 'transparent',
+            borderWidth: 1.5,
+            borderDash: [5, 4],
+            pointRadius: 0,
+            fill: false,
+            tension: 0,
+            order: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top' },
+          tooltip: {
+            mode: 'index',
+            intersect: false,
+            callbacks: {
+              label: ctx => {
+                const v = ctx.parsed.y;
+                if (ctx.datasetIndex === 0) {
+                  return '不良率: ' + v + '%' + (isOut[ctx.dataIndex] ? ' ⚠️ 管理外' : '');
+                }
+                return ctx.dataset.label + ': ' + v + '%';
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: '不良率 (%)' },
+            ticks: { callback: v => v + '%' }
+          },
+          x: { title: { display: true, text: '日付（シフト）' } }
+        }
+      }
+    });
+  }
+
+  // ===========================
+  //  Report Tab
+  // ===========================
+  function prevCalendarDay(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split('T')[0];
+  }
+
+  function getWeekRange(dateStr, weekOffset) {
+    const d = new Date(dateStr + 'T00:00:00');
+    const dow = d.getDay();
+    const mon = new Date(d);
+    mon.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1) + weekOffset * 7);
+    return { start: mon.toISOString().split('T')[0] };
+  }
+
+  function calcMetrics(recs) {
+    const totalDef  = recs.reduce((s, r) => s + r.totalDefects, 0);
+    const totalProd = recs.reduce((s, r) => s + (r.production || 0), 0);
+    return { totalDef, totalProd, rate: totalProd > 0 ? totalDef / totalProd * 100 : null };
+  }
+
+  function renderReport() {
+    const dateEl = document.getElementById('report-date');
+    const date = dateEl.value || todayStr();
+    if (!dateEl.value) dateEl.value = date;
+    renderKPIDashboard(date);
+    renderDailyReportContent(date);
+  }
+
+  function renderKPIDashboard(date) {
+    const area = document.getElementById('kpi-dashboard');
+    const todayRecs    = records.filter(r => r.date === date);
+    const yestDate     = prevCalendarDay(date);
+    const yestRecs     = records.filter(r => r.date === yestDate);
+    const todayM       = calcMetrics(todayRecs);
+    const yestM        = calcMetrics(yestRecs);
+    const todayDayM    = calcMetrics(todayRecs.filter(r => r.shift === '昼'));
+    const todayNightM  = calcMetrics(todayRecs.filter(r => r.shift === '夜'));
+    const yestDayM     = calcMetrics(yestRecs.filter(r => r.shift === '昼'));
+    const yestNightM   = calcMetrics(yestRecs.filter(r => r.shift === '夜'));
+
+    const thisWeek     = getWeekRange(date, 0);
+    const thisWeekRecs = records.filter(r => r.date >= thisWeek.start && r.date <= date);
+    const thisWeekM    = calcMetrics(thisWeekRecs);
+
+    const lastWeek     = getWeekRange(date, -1);
+    const dObj         = new Date(date + 'T00:00:00');
+    const daysFromMon  = dObj.getDay() === 0 ? 6 : dObj.getDay() - 1;
+    const lwEnd        = new Date(lastWeek.start + 'T00:00:00');
+    lwEnd.setDate(lwEnd.getDate() + daysFromMon);
+    const lastWeekRecs = records.filter(r => r.date >= lastWeek.start && r.date <= lwEnd.toISOString().split('T')[0]);
+    const lastWeekM    = calcMetrics(lastWeekRecs);
+
+    function chgTag(curr, prev) {
+      if (curr === null || prev === null)
+        return '<span style="color:#a0aec0;font-size:0.78rem">比較データなし</span>';
+      const d = curr - prev;
+      if (Math.abs(d) < 0.001) return '<span style="color:#718096;font-size:0.78rem">― 変化なし</span>';
+      const col = d > 0 ? '#c53030' : '#276749';
+      return '<span style="color:' + col + ';font-weight:700;font-size:0.85rem">' +
+             (d > 0 ? '▲ +' : '▼ ') + d.toFixed(2) + '%</span>';
+    }
+
+    function kCard(icon, title, m, compM, compLabel, border) {
+      return '<div class="kpi-card" style="border-top:4px solid ' + border + '">' +
+        '<div style="font-size:1.3rem;margin-bottom:0.3rem">' + icon + '</div>' +
+        '<div class="kpi-title">' + title + '</div>' +
+        '<div class="kpi-value" style="color:' + border + '">' + (m.rate !== null ? m.rate.toFixed(2) + '%' : '--') + '</div>' +
+        '<div style="font-size:0.73rem;color:#a0aec0;margin:0.15rem 0 0.4rem">' +
+          (m.totalProd > 0 ? m.totalProd.toLocaleString() + '個' : '--') + ' / 不良 ' + m.totalDef + '件' +
+        '</div>' +
+        '<div style="font-size:0.7rem;color:#a0aec0">' + compLabel + '</div>' +
+        '<div>' + chgTag(m.rate, compM.rate) + '</div></div>';
+    }
+
+    const tc = todayM.rate !== null && todayM.rate >= 5 ? '#e53e3e'
+             : todayM.rate !== null && todayM.rate >= 2 ? '#dd6b20' : '#38a169';
+    area.innerHTML =
+      '<div class="kpi-grid">' +
+      kCard('📊', '当日不良率',     todayM,      yestM,      '前日比',     tc) +
+      kCard('☀️',  '昼シフト不良率', todayDayM,   yestDayM,   '前日昼比',   '#f6ad55') +
+      kCard('🌙',  '夜シフト不良率', todayNightM, yestNightM, '前日夜比',   '#4299e1') +
+      kCard('📅', '週次平均不良率', thisWeekM,   lastWeekM,  '先週同期比', '#805ad5') +
+      '</div>';
+  }
+
+  function renderDailyReportContent(date) {
+    const area = document.getElementById('report-content');
+    const recs = records.filter(r => r.date === date);
+    if (!recs.length) {
+      area.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><p>' +
+        date + ' のデータがありません<br><span style="font-size:0.8rem">上の「基準日」で別の日付を選択してください</span></p></div>';
+      return;
+    }
+    const M      = calcMetrics(recs);
+    const dayM   = calcMetrics(recs.filter(r => r.shift === '昼'));
+    const nightM = calcMetrics(recs.filter(r => r.shift === '夜'));
+
+    const defMap = new Map();
+    recs.forEach(r => r.defects.forEach(d => defMap.set(d.type, (defMap.get(d.type) || 0) + d.count)));
+    const sdefs = [...defMap.entries()].sort((a, b) => b[1] - a[1]);
+
+    const DOW = ['日','月','火','水','木','金','土'];
+    const dateLabel = date + ' (' + DOW[new Date(date + 'T00:00:00').getDay()] + ')';
+    const yestDate  = prevCalendarDay(date);
+    const yestM     = calcMetrics(records.filter(r => r.date === yestDate));
+
+    function rs(rate) {
+      return rate === null ? 'color:#a0aec0'
+           : rate >= 5 ? 'color:#c53030;font-weight:bold'
+           : rate >= 2 ? 'color:#c05621;font-weight:bold'
+           : 'color:#276749;font-weight:bold';
+    }
+    function fr(rate) { return rate !== null ? rate.toFixed(2) + '%' : '--'; }
+    function fn(n) { return n > 0 ? n.toLocaleString() : '--'; }
+
+    // Summary KPI cards
+    let kpiH = '';
+    [{l:'総生産数', v:fn(M.totalProd),              u:'個', s:'color:#2b6cb0'},
+     {l:'総不良数', v:M.totalDef.toLocaleString(),   u:'件', s:'color:#276749'},
+     {l:'不良率',   v:M.rate!==null?M.rate.toFixed(2):'--', u:'%', s:rs(M.rate)}
+    ].forEach(k => {
+      kpiH += '<div style="background:#f7fafc;border-radius:8px;padding:0.85rem;text-align:center">' +
+        '<div style="font-size:0.7rem;color:#718096;font-weight:600;text-transform:uppercase;letter-spacing:0.06em">' + k.l + '</div>' +
+        '<div style="font-size:1.6rem;font-weight:800;' + k.s + ';margin-top:0.2rem">' + k.v +
+        '<span style="font-size:0.85rem">' + k.u + '</span></div></div>';
+    });
+
+    // Shift table rows
+    let shiftH = '';
+    [{lbl:'☀️ 昼', m:dayM,   bg:'#fefcbf', b:false},
+     {lbl:'🌙 夜', m:nightM, bg:'#ebf4ff', b:false},
+     {lbl:'合計',  m:M,      bg:'#f7fafc', b:true}
+    ].forEach(row => {
+      shiftH += '<tr style="background:' + row.bg + '">' +
+        '<td style="padding:0.55rem 0.85rem;' + (row.b ? 'font-weight:700' : '') + '">' + row.lbl + '</td>' +
+        '<td style="padding:0.55rem 0.85rem;text-align:right">' + fn(row.m.totalProd) + '</td>' +
+        '<td style="padding:0.55rem 0.85rem;text-align:right">' + row.m.totalDef.toLocaleString() + '</td>' +
+        '<td style="padding:0.55rem 0.85rem;text-align:right;' + rs(row.m.rate) + '">' + fr(row.m.rate) + '</td></tr>';
+    });
+
+    // Defect ranking rows
+    let defH = '';
+    sdefs.slice(0, 10).forEach((e, i) => {
+      const pct = M.totalDef > 0 ? (e[1] / M.totalDef * 100).toFixed(1) : '0';
+      const bar = sdefs[0][1] > 0 ? Math.round(e[1] / sdefs[0][1] * 100) : 0;
+      defH += '<tr>' +
+        '<td style="padding:0.55rem 0.85rem;text-align:center;color:#718096">' + (i + 1) + '</td>' +
+        '<td style="padding:0.55rem 0.85rem"><strong>' + e[0] + '</strong></td>' +
+        '<td style="padding:0.55rem 0.85rem;text-align:right">' + e[1].toLocaleString() + '</td>' +
+        '<td style="padding:0.55rem 0.85rem;text-align:right">' + pct + '%</td>' +
+        '<td style="padding:0.55rem 0.85rem"><div style="background:#e2e8f0;border-radius:4px;height:10px">' +
+        '<div style="background:#3182ce;border-radius:4px;height:10px;width:' + bar + '%"></div></div></td></tr>';
+    });
+
+    // Yesterday comparison block
+    let yestH = '';
+    if (yestM.rate !== null && M.rate !== null) {
+      const diff = M.rate - yestM.rate;
+      const dLabel = Math.abs(diff) < 0.001
+        ? '<span style="color:#718096">変化なし</span>'
+        : diff > 0
+          ? '<span style="color:#c53030;font-weight:bold">▲ +' + diff.toFixed(2) + '% （悪化）</span>'
+          : '<span style="color:#276749;font-weight:bold">▼ ' + diff.toFixed(2) + '% （改善）</span>';
+      yestH = '<div style="background:#f0f9ff;border:1px solid #bee3f8;border-radius:8px;' +
+        'padding:0.85rem 1rem;margin-top:1rem;font-size:0.875rem;color:#2a4365">' +
+        '<strong>前日（' + yestDate + '）比較：</strong>不良率 ' + fr(yestM.rate) + ' → ' + fr(M.rate) + '　' + dLabel + '</div>';
+    }
+
+    const th = 'style="background:#f7fafc;padding:0.5rem 0.85rem;text-align:';
+    area.innerHTML =
+      '<div class="print-report">' +
+      // Header
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:2px solid #2b6cb0">' +
+      '<div><div style="font-size:1.3rem;font-weight:800;color:#1a202c">品質日報</div>' +
+      '<div style="font-size:0.85rem;color:#718096;margin-top:0.2rem">QUALITY DAILY REPORT</div></div>' +
+      '<div style="text-align:right"><div style="font-size:1.1rem;font-weight:700;color:#2b6cb0">' + dateLabel + '</div>' +
+      '<div style="font-size:0.78rem;color:#a0aec0;margin-top:0.1rem">作成：' +
+        new Date().toLocaleString('ja-JP', {month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}) +
+      '</div></div></div>' +
+      // KPI cards
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.25rem">' + kpiH + '</div>' +
+      // Shift table
+      '<div style="margin-bottom:1.25rem">' +
+      '<div style="font-size:0.78rem;font-weight:700;color:#4a5568;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.6rem">シフト別実績</div>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:0.875rem"><thead><tr>' +
+      '<th ' + th + 'left;border-bottom:2px solid #e2e8f0">シフト</th>' +
+      '<th ' + th + 'right;border-bottom:2px solid #e2e8f0">生産数</th>' +
+      '<th ' + th + 'right;border-bottom:2px solid #e2e8f0">不良数</th>' +
+      '<th ' + th + 'right;border-bottom:2px solid #e2e8f0">不良率</th>' +
+      '</tr></thead><tbody>' + shiftH + '</tbody></table></div>' +
+      // Defect ranking
+      '<div style="margin-bottom:1rem">' +
+      '<div style="font-size:0.78rem;font-weight:700;color:#4a5568;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.6rem">不良種別ランキング</div>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:0.875rem"><thead><tr>' +
+      '<th ' + th + 'center;border-bottom:2px solid #e2e8f0;width:3rem">順位</th>' +
+      '<th ' + th + 'left;border-bottom:2px solid #e2e8f0">不良内容</th>' +
+      '<th ' + th + 'right;border-bottom:2px solid #e2e8f0">件数</th>' +
+      '<th ' + th + 'right;border-bottom:2px solid #e2e8f0">構成比</th>' +
+      '<th ' + th + 'left;border-bottom:2px solid #e2e8f0;min-width:100px">比率</th>' +
+      '</tr></thead><tbody>' + defH + '</tbody></table></div>' +
+      yestH + '</div>';
+  }
+
+  // ===========================
+  //  品番別 Excel ダイレクト取込
+  // ===========================
+
+  // 鋳造ロットセル値 → {date:"YYYY-MM-DD", shift:"昼"|"夜"|""} or null
+  function xlParseHeaderCell(raw) {
+    if (raw === null || raw === undefined) return null;
+    const curYear = new Date().getFullYear();
+    let shift = '', datePart = '';
+
+    // SheetJS(cellDates:true) では本物のExcel日付はDateオブジェクトになる。
+    // 数値型はランク番号・管理番号などの非日付セルなので null を返す。
+    if (raw instanceof Date) {
+      const d = raw;
+      return {
+        date: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'),
+        shift: ''
+      };
+    }
+    if (typeof raw === 'number') return null; // 数値型 = 日付ではない（ランク番号など）
+
+    const s = String(raw).trim();
+    if (!s) return null;
+
+    const last = s.slice(-1).toUpperCase();
+    if      (last === 'D') { shift = '昼'; datePart = s.slice(0, -1).trim(); }
+    else if (last === 'N') { shift = '夜'; datePart = s.slice(0, -1).trim(); }
+    else                   { datePart = s; }
+
+    // YYYY/M/D or YYYY-M-D
+    let m = datePart.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+    if (m) return { date: m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0'), shift };
+
+    // M/D
+    m = datePart.match(/^([0-1]?\d)\/([0-3]?\d)$/);
+    if (m) {
+      const mm = parseInt(m[1], 10), dd = parseInt(m[2], 10);
+      if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+        let year = curYear;
+        if (new Date(year, mm - 1, dd) > new Date()) year = curYear - 1;
+        return { date: year + '-' + String(mm).padStart(2, '0') + '-' + String(dd).padStart(2, '0'), shift };
+      }
+    }
+
+    // N月N日
+    m = datePart.match(/^([0-1]?\d)月([0-3]?\d)日$/);
+    if (m) {
+      const mm = parseInt(m[1], 10), dd = parseInt(m[2], 10);
+      if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+        let year = curYear;
+        if (new Date(year, mm - 1, dd) > new Date()) year = curYear - 1;
+        return { date: year + '-' + String(mm).padStart(2, '0') + '-' + String(dd).padStart(2, '0'), shift };
+      }
+    }
+
+    // 日のみ（例: "8D" → shift='昼', datePart="8" のようにシフット付きの場合のみ適用）
+    // シフットなし ("1", "2" などの純粋な数字文字列) は誤解析防止のためスキップ
+    if (shift) {
+      m = datePart.match(/^(\d{1,2})$/);
+      if (m) {
+        const dd = parseInt(m[1], 10);
+        const now = new Date();
+        if (dd >= 1 && dd <= 31)
+          return { date: now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(dd).padStart(2, '0'), shift };
+      }
+    }
+    return null;
+  }
+
+  function xlToInt(v) {
+    if (v === null || v === undefined) return 0;
+    if (typeof v === 'number') return Math.round(v);
+    const s = String(v).trim().replace(/,/g, '');
+    if (!s || s === '-' || s === 'N/A') return 0;
+    const n = parseFloat(s);
+    return isNaN(n) ? 0 : Math.round(n);
+  }
+
+  // PART_CONFIGS に基づいてボタンを生成し、ファイル入力を初期化
+  function renderPartButtons() {
+    const area = document.getElementById('part-btn-area');
+    area.innerHTML = PART_CONFIGS.map(c =>
+      '<button class="btn btn-excel" onclick="triggerPartImport(\'' + c.id + '\')">' +
+      '📊 ' + c.label + '　取込</button>'
+    ).join('');
+
+    document.getElementById('part-excel-input').addEventListener('change', function() {
+      if (this.files[0] && currentPartConfig) handlePartExcelFile(this.files[0]);
+    });
+  }
+
+  function triggerPartImport(configId) {
+    currentPartConfig = PART_CONFIGS.find(c => c.id === configId) || null;
+    if (!currentPartConfig) return;
+    const inp = document.getElementById('part-excel-input');
+    inp.value = '';
+    inp.click();
+  }
+
+  function handlePartExcelFile(file) {
+    const name = file.name.toLowerCase();
+    if (!name.endsWith('.xlsx') && !name.endsWith('.xls') && !name.endsWith('.xlsm')) {
+      showAlert('Excelファイル（.xlsx / .xls）を選択してください', 'error');
+      return;
+    }
+    if (typeof XLSX === 'undefined') {
+      showAlert('SheetJSライブラリ読み込み中です。少し待ってから再度お試しください', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = e => {
+      try { processPartExcel(e.target.result, currentPartConfig); }
+      catch (err) { showAlert('Excel読み込みエラー: ' + err.message, 'error'); }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function processPartExcel(arrayBuffer, cfg) {
+    const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+
+    if (!wb.SheetNames.includes(cfg.sheetName)) {
+      showAlert('シート「' + cfg.sheetName + '」が見つかりません', 'error');
+      return;
+    }
+    const ws = wb.Sheets[cfg.sheetName];
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    const maxCol = range.e.c + 1; // 1-indexed
+
+    // C列(colItem)の rowItemStart〜rowItemEnd から不良内容名を収集
+    // 「合計」「小計」「計」を含む行・数値のみの行はスキップ（二重カウント防止）
+    const itemNames = [];
+    for (let r = cfg.rowItemStart; r <= cfg.rowItemEnd; r++) {
+      const addr = XLSX.utils.encode_cell({ r: r - 1, c: cfg.colItem - 1 });
+      const cell = ws[addr];
+      const text = (cell && cell.v) ? String(cell.v).trim() : null;
+      const isSummary = text && (
+        text.includes('合計') ||
+        text.includes('小計') ||
+        text.endsWith('計') ||
+        text.startsWith('%') ||
+        /^\d+$/.test(text)
+      );
+      itemNames.push(isSummary ? null : text);
+    }
+
+    const results = [];
+    for (let c = cfg.colDataStart; c <= maxCol; c++) {
+      // 金型番号 (rowMold) ─ null なら空文字でスキップ
+      let moldNumber = '';
+      if (cfg.rowMold) {
+        const moldAddr = XLSX.utils.encode_cell({ r: cfg.rowMold - 1, c: c - 1 });
+        moldNumber = (ws[moldAddr] && ws[moldAddr].v !== null) ? String(ws[moldAddr].v).trim() : '';
+      }
+
+      // 日付+シフト解析:
+      // cfg.rowDate が指定されていればその行を優先（加工ロット行）。
+      // 未指定の場合は rowLot の各行を順に試してフォールバック。
+      let parsed = null;
+      if (cfg.rowDate) {
+        const dateAddr = XLSX.utils.encode_cell({ r: cfg.rowDate - 1, c: c - 1 });
+        parsed = xlParseHeaderCell(ws[dateAddr] ? ws[dateAddr].v : null);
+      }
+
+      // 鋳造ロット表示用 ID (rowLot) ─ 単一行 or 複数行配列に対応
+      // 複数行の場合: 各行の値を " / " でつなげて混合表示
+      const rowLots = Array.isArray(cfg.rowLot) ? cfg.rowLot : [cfg.rowLot];
+      const lotParts = [];
+      for (const rowL of rowLots) {
+        const addr = XLSX.utils.encode_cell({ r: rowL - 1, c: c - 1 });
+        const raw  = ws[addr] ? ws[addr].v : null;
+        if (raw !== null && raw !== undefined) {
+          const rawStr = String(raw).trim();
+          if (rawStr) lotParts.push(rawStr);
+          if (!parsed) parsed = xlParseHeaderCell(raw); // rowDate 未指定時のフォールバック
+        }
+      }
+      const lotId = lotParts.join(' / ');
+      if (!parsed || !parsed.date) continue; // 日付なし列はスキップ
+
+      // 生産数 (rowProd)
+      const prodAddr   = XLSX.utils.encode_cell({ r: cfg.rowProd - 1, c: c - 1 });
+      const production = xlToInt(ws[prodAddr] ? ws[prodAddr].v : null);
+
+      // 不良データ集計
+      let totalDefects = 0;
+      const defects = [];
+      for (let i = 0; i < itemNames.length; i++) {
+        const itemName = itemNames[i];
+        if (!itemName) continue;
+        const r = cfg.rowItemStart + i;
+        const cntAddr = XLSX.utils.encode_cell({ r: r - 1, c: c - 1 });
+        const cnt = xlToInt(ws[cntAddr] ? ws[cntAddr].v : null);
+        if (cnt > 0) { defects.push({ type: itemName, count: cnt }); totalDefects += cnt; }
+      }
+
+      if (totalDefects === 0 && production === 0) continue; // 空列スキップ
+
+      results.push({
+        date:         parsed.date,
+        shift:        parsed.shift,
+        production:   production || null,
+        totalDefects,
+        defects:      defects.sort((a, b) => b.count - a.count),
+        partNumber:   cfg.label,
+        moldNumber,
+        lotId
+      });
+    }
+
+    if (!results.length) {
+      showAlert('有効なデータが見つかりませんでした。シートの構成を確認してください', 'error');
+      return;
+    }
+    lotPreviewData = results;
+    showLotPreview(cfg);
+  }
+
+  function showLotPreview(cfg) {
+    const colCount = lotPreviewData.length; // Excelの列数（パレット単位）
+
+    // 取込確定と同じ集計ロジックでプレビューデータを作成
+    // 同一ロット（品番+金型+日付+シフト）は生産数を合算、不良は種別ごとに合算
+    const batchMap = new Map();
+    for (const p of lotPreviewData) {
+      const key = p.partNumber + '|' + p.moldNumber + '|' + p.date + '|' + p.shift;
+      if (batchMap.has(key)) {
+        const g = batchMap.get(key);
+        const merged = mergeDefects(g.defects, p.defects);
+        const tot    = merged.reduce((s, d) => s + d.count, 0);
+        const prod   = (g.production || 0) + (p.production || 0);
+        g.defects      = merged;
+        g.totalDefects = tot;
+        g.production   = prod || null;
+      } else {
+        batchMap.set(key, { ...p });
+      }
+    }
+    const data = [...batchMap.values()].sort((a, b) =>
+      a.date.localeCompare(b.date) || a.shift.localeCompare(b.shift)
+    );
+
+    const area = document.getElementById('lot-preview-area');
+    const mergedNote = colCount > data.length
+      ? '&nbsp;<span style="color:#744210">（' + colCount + '列 → 同一ロット合算で ' + data.length + '件）</span>'
+      : '';
+    const summary =
+      '<div style="background:#f0fff4;border:1px solid #9ae6b4;border-radius:8px;padding:0.8rem 1rem;margin-bottom:1rem;font-size:0.875rem;color:#276749">' +
+      '「' + cfg.sheetName + '」から <strong>' + data.length + '件</strong>の記録を取込予定' + mergedNote +
+      '</div>';
+
+    const rows = data.map(r => {
+      const shiftB = r.shift === '昼'
+        ? '<span class="badge badge-day">昼</span>'
+        : r.shift === '夜' ? '<span class="badge badge-night">夜</span>' : (r.shift || '--');
+      const prod   = r.production || 0;
+      const prodCell = prod ? prod.toLocaleString() : '<span style="color:#cbd5e0">--</span>';
+      const rate = prod ? (r.totalDefects / prod * 100).toFixed(2) + '%' : '<span style="color:#cbd5e0">--</span>';
+      const defStr = r.defects.slice(0, 3).map(d => d.type + ':' + d.count).join('&nbsp;')
+        + (r.defects.length > 3 ? '&nbsp;…' : '');
+      return '<tr>' +
+        '<td>' + r.date + '</td>' +
+        '<td>' + shiftB + '</td>' +
+        '<td>' + (r.moldNumber || '--') + '</td>' +
+        '<td>' + prodCell + '</td>' +
+        '<td>' + r.totalDefects.toLocaleString() + '</td>' +
+        '<td>' + rate + '</td>' +
+        '<td style="font-size:0.8rem;color:#718096">' + defStr + '</td>' +
+        '</tr>';
+    }).join('');
+
+    area.innerHTML = summary +
+      '<div class="table-wrap"><table><thead><tr>' +
+      '<th>日付</th><th>シフト</th><th>金型</th><th>生産数（合計）</th><th>不良数</th><th>不良率</th><th>種別内訳</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="form-actions" style="border-top:none;padding-top:0;margin-top:1rem">' +
+      '<button class="btn btn-secondary" onclick="cancelLotImport()">キャンセル</button>' +
+      '<button class="btn btn-primary" onclick="importLotData()">✓ 取込確定</button>' +
+      '</div>';
+  }
+
+  function cancelLotImport() {
+    lotPreviewData = [];
+    document.getElementById('lot-preview-area').innerHTML = '';
+    document.getElementById('part-excel-input').value = '';
+  }
+
+  function importLotData() {
+    if (!lotPreviewData.length) return;
+    let added = 0, updated = 0;
+    const base = Date.now();
+
+    // ── Step1: 同一ロット（品番+金型+日付+シフト）が複数列ある場合を先にまとめる ──
+    // 生産数は合計、不良は種別ごとに合算してから records に反映する。
+    // これをしないと、ループ中に自分で追加したレコードを検索してしまい
+    // 不良が 2 倍・生産数が 1 列分だけになって不良率が跳ね上がる。
+    const batchMap = new Map();
+    for (const p of lotPreviewData) {
+      const key = p.partNumber + '|' + p.moldNumber + '|' + p.date + '|' + p.shift;
+      if (batchMap.has(key)) {
+        const g = batchMap.get(key);
+        const merged = mergeDefects(g.defects, p.defects);
+        const tot    = merged.reduce((s, d) => s + d.count, 0);
+        const prod   = (g.production || 0) + (p.production || 0); // 生産数は合算
+        g.defects      = merged;
+        g.totalDefects = tot;
+        g.production   = prod || null;
+        g.defectRate   = prod ? tot / prod * 100 : null;
+      } else {
+        batchMap.set(key, { ...p });
+      }
+    }
+
+    // ── Step2: まとめた結果を既存 records と照合 ──
+    // 再取込（既存あり）は上書き。合算すると2重取込になるため。
+    [...batchMap.values()].forEach((p, i) => {
+      const idx = records.findIndex(r =>
+        r.source === 'excel' &&
+        r.partNumber === p.partNumber &&
+        r.moldNumber === p.moldNumber &&
+        r.date === p.date &&
+        r.shift === p.shift
+      );
+      if (idx >= 0) {
+        // 再取込: Excelの最新値で上書き（マージではなく置換）
+        records[idx] = {
+          ...records[idx],
+          production:   p.production || null,
+          totalDefects: p.totalDefects,
+          defectRate:   p.production ? p.totalDefects / p.production * 100 : null,
+          defects:      p.defects,
+          lotId:        p.lotId
+        };
+        updated++;
+      } else {
+        records.push({
+          id:           base + i,
+          date:         p.date,
+          shift:        p.shift,
+          production:   p.production || null,
+          totalDefects: p.totalDefects,
+          defectRate:   p.production ? p.totalDefects / p.production * 100 : null,
+          defects:      p.defects,
+          source:       'excel',
+          partNumber:   p.partNumber,
+          moldNumber:   p.moldNumber,
+          lotId:        p.lotId
+        });
+        added++;
+      }
+    });
+
+    sortRecords();
+    saveToStorage();
+    renderAllTables();
+    updateStats();
+    cancelLotImport();
+    showAlert('✓ 取込完了：新規 ' + added + ' 件、更新 ' + updated + ' 件', 'success');
+  }
+
+  // ===========================
+  //  File System Access API - パス指定取込
+  // ===========================
+  const _FS_DB   = 'defect-fs-db';
+  const _FS_STORE = 'handles';
+  const _FS_KEY   = 'excelFolder';
+
+  function _openFsDb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(_FS_DB, 1);
+      req.onupgradeneeded = e => e.target.result.createObjectStore(_FS_STORE);
+      req.onsuccess = e => resolve(e.target.result);
+      req.onerror   = e => reject(e.target.error);
+    });
+  }
+
+  async function _saveFolderHandle(handle) {
+    const db = await _openFsDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(_FS_STORE, 'readwrite');
+      tx.objectStore(_FS_STORE).put(handle, _FS_KEY);
+      tx.oncomplete = resolve;
+      tx.onerror = e => reject(e.target.error);
+    });
+  }
+
+  async function _loadFolderHandle() {
+    const db = await _openFsDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(_FS_STORE, 'readonly');
+      const req = tx.objectStore(_FS_STORE).get(_FS_KEY);
+      req.onsuccess = e => resolve(e.target.result || null);
+      req.onerror   = e => reject(e.target.error);
+    });
+  }
+
+  async function initFolderDisplay() {
+    try {
+      const handle = await _loadFolderHandle();
+      if (handle) document.getElementById('excel-folder-path').textContent = handle.name;
+    } catch(e) { /* IndexedDB未対応環境ではスキップ */ }
+  }
+
+  function initPathPartSelect() {
+    const sel = document.getElementById('path-part-select');
+    sel.innerHTML = PART_CONFIGS.map(c =>
+      '<option value="' + c.id + '">' + c.label + '</option>'
+    ).join('');
+  }
+
+  function _setFolderStatus(msg) {
+    const el = document.getElementById('excel-folder-status');
+    el.textContent = msg;
+    el.style.display = msg ? 'block' : 'none';
+  }
+
+  async function selectExcelFolder() {
+    if (!window.showDirectoryPicker) {
+      // Safari / Firefox など非対応ブラウザ：フォールバック案内を表示
+      _setFolderStatus('⚠ このブラウザはフォルダ設定に対応していません（Chrome / Edge が必要）。「▶ 読み込む」ボタンを押すと通常のファイル選択ダイアログが開きます。');
+      document.getElementById('excel-folder-path').textContent = '非対応ブラウザ（Chrome推奨）';
+      return;
+    }
+    _setFolderStatus('');
+    try {
+      const handle = await window.showDirectoryPicker({ mode: 'read' });
+      await _saveFolderHandle(handle);
+      document.getElementById('excel-folder-path').textContent = handle.name;
+      showAlert('✓ フォルダを設定しました: ' + handle.name, 'success');
+    } catch(e) {
+      if (e.name !== 'AbortError') {
+        _setFolderStatus('フォルダ選択エラー: ' + e.message);
+      }
+    }
+  }
+
+  async function loadExcelByFilename() {
+    const configId = document.getElementById('path-part-select').value;
+    const cfg = PART_CONFIGS.find(c => c.id === configId);
+    if (!cfg) { showAlert('品番を選択してください', 'error'); return; }
+
+    // showDirectoryPicker 非対応ブラウザ → 従来の file input にフォールバック
+    if (!window.showDirectoryPicker) {
+      currentPartConfig = cfg;
+      const inp = document.getElementById('part-excel-input');
+      inp.value = '';
+      inp.click();
+      return;
+    }
+
+    const filename = (document.getElementById('excel-filename').value || '').trim();
+    if (!filename) { _setFolderStatus('ファイル名を入力してください'); return; }
+
+    let handle;
+    try { handle = await _loadFolderHandle(); }
+    catch(e) { _setFolderStatus('フォルダ設定の読み込みに失敗しました'); return; }
+
+    // フォルダ未設定 → 通常ファイルピッカーにフォールバック
+    if (!handle) {
+      _setFolderStatus('フォルダが未設定です。先に「フォルダを設定」を押すか、そのまま読み込むとファイル選択ダイアログが開きます。');
+      currentPartConfig = cfg;
+      const inp = document.getElementById('part-excel-input');
+      inp.value = '';
+      inp.click();
+      return;
+    }
+
+    _setFolderStatus('');
+    try {
+      const perm = await handle.queryPermission({ mode: 'read' });
+      if (perm !== 'granted') {
+        const req = await handle.requestPermission({ mode: 'read' });
+        if (req !== 'granted') { _setFolderStatus('フォルダへのアクセス権限がありません'); return; }
+      }
+      const fileHandle = await handle.getFileHandle(filename);
+      const file = await fileHandle.getFile();
+      currentPartConfig = cfg;
+      handlePartExcelFile(file);
+    } catch(e) {
+      if (e.name === 'NotFoundError') {
+        _setFolderStatus('ファイルが見つかりません: ' + filename);
+      } else {
+        _setFolderStatus('ファイル読み込みエラー: ' + e.message);
+      }
+    }
+  }
+
+  // ===========================
+  //  Countermeasure Advice
+  // ===========================
+  const COUNTERMEASURE_DB = [
+    {
+      keywords: ['傷', 'きず', 'スクラッチ', '引っかき', '線傷', 'キズ'],
+      label: '傷・スクラッチ', icon: '🔧', priority: 'medium',
+      causes: ['搬送・取り扱い時の接触', '治具・設備の摩耗・損傷', '作業方法のばらつき'],
+      direction: '搬送・取り扱い工程の見直しと治具の点検',
+      actions: [
+        '搬送治具・パレットのクッション材・保護材の状態確認と交換',
+        '作業者の取り扱い手順の再教育・標準化（SOP更新）',
+        'コンベア・チャック・ロボットハンドの接触部を点検・修繕',
+        '作業環境（照明・スペース・レイアウト）の改善確認'
+      ],
+      checkpoints: ['4M変化点（人・機械・材料・方法）の確認', '工程FMEAの見直し']
+    },
+    {
+      keywords: ['変形', 'へこみ', 'そり', '反り', 'ひずみ', '歪み', 'クリープ', 'たわみ'],
+      label: '変形・そり', icon: '📐', priority: 'high',
+      causes: ['成形条件（温度・圧力・時間）の不安定', '型・治具の摩耗', '保管・梱包方法の問題'],
+      direction: '成形条件の安定化と型・保管管理の見直し',
+      actions: [
+        '成形条件（温度・圧力・保圧時間・冷却時間）の管理値確認と最適化',
+        '金型・成形型の摩耗・変形状況の定期点検',
+        '保管方法（積み重ね・温度・湿度環境）の見直し',
+        '離型タイミング・離型剤の種類と塗布量の確認'
+      ],
+      checkpoints: ['工程能力指数（Cp・Cpk）の確認（目標1.33以上）', '設備定期点検記録の確認']
+    },
+    {
+      keywords: ['異物', '混入', 'コンタミ', '夾雑物', 'ゴミ', '汚れ', 'コンタミネーション'],
+      label: '異物混入', icon: '🔍', priority: 'high',
+      causes: ['原材料への異物混入', '設備・治具からの部品脱落', '作業環境の汚染'],
+      direction: '4M変化点確認と清掃・管理体制の徹底',
+      actions: [
+        '原材料ロット・仕入先の変化点確認とサンプル保管',
+        '設備・治具の定期分解清掃とボルト・部品の脱落確認',
+        'フィルター・マグネットキャッチャーの点検・清掃頻度の見直し',
+        'クリーン度管理の強化（作業着・入室管理・エアシャワー）'
+      ],
+      checkpoints: ['サプライヤー監査記録の確認', '清掃・点検記録の整備と遵守確認']
+    },
+    {
+      keywords: ['バリ', 'ばり', 'フラッシュ', '鋳バリ', 'バリ取り'],
+      label: 'バリ・フラッシュ', icon: '⚙️', priority: 'medium',
+      causes: ['金型摩耗・パーティングラインのずれ', '成形圧力・温度の過多', '型締力不足'],
+      direction: '金型の点検・修繕と成形条件の最適化',
+      actions: [
+        '金型パーティングライン・インサート部の摩耗・損傷点検',
+        '成形圧力・射出速度・型締力の管理値確認と調整',
+        '金型温度・材料温度の管理強化',
+        'バリ取り工程の効率化・標準化（応急処置としての短期対策）'
+      ],
+      checkpoints: ['金型使用ショット数・定期保全スケジュールの確認', '金型台帳の更新']
+    },
+    {
+      keywords: ['欠け', 'かけ', '割れ', 'クラック', 'ひび', '破損', '破壊', 'チッピング'],
+      label: '欠け・割れ・クラック', icon: '⚠️', priority: 'high',
+      causes: ['材料の脆化・劣化', '衝撃・応力集中', '成形条件不適（残留応力）'],
+      direction: '材料品質確認と取り扱い・成形条件の見直し',
+      actions: [
+        '原材料の品質確認（ロット・保管状態・劣化・水分量）',
+        '取り扱い・搬送時の衝撃防止対策強化（緩衝材・速度制限）',
+        '成形条件（温度・圧力・冷却速度）の最適化で残留応力を低減',
+        'ゲート位置・形状の見直し（残留応力低減・流動バランス改善）'
+      ],
+      checkpoints: ['材料試験データ・ロット記録の確認', '破損品の断面観察による原因特定（SEM等）']
+    },
+    {
+      keywords: ['寸法', 'サイズ', '公差', '径', '長さ', '厚み', '厚さ', 'アンダーサイズ', 'オーバーサイズ', 'アンダ', 'オーバ'],
+      label: '寸法不良', icon: '📏', priority: 'high',
+      causes: ['成形収縮のばらつき', '型の摩耗・変形', '測定方法のばらつき（MSA）'],
+      direction: '寸法管理体制の強化と工程能力の改善',
+      actions: [
+        '測定器・ゲージの校正状況と正しい使用方法の確認',
+        '成形収縮率の管理（温度・材料ロットの影響確認）',
+        '金型コアピン・キャビティの寸法測定・定期点検',
+        'SPC（統計的工程管理）の導入・活用検討'
+      ],
+      checkpoints: ['Cp・Cpk値の確認（目標：1.33以上）', '測定システム解析（MSA/GR&R）の実施']
+    },
+    {
+      keywords: ['色', '変色', '色むら', '黄変', '褪色', 'ヤケ', '焼け', 'カラー', '色差'],
+      label: '変色・色むら', icon: '🎨', priority: 'medium',
+      causes: ['樹脂の過熱・滞留', '原材料ロット変化', '乾燥条件の不適'],
+      direction: '材料管理と成形温度・滞留時間の適正化',
+      actions: [
+        '原材料の乾燥条件（温度・時間）と水分量の確認強化',
+        '成形機シリンダー温度・滞留時間の管理値確認と最適化',
+        '材料ロット変更の有無確認とサンプル保管（色見本照合）',
+        '色見本との照合基準・判定方法の明確化とライトボックス導入'
+      ],
+      checkpoints: ['材料ロット管理記録の整備', '色差計による定量的測定の実施（ΔE管理）']
+    },
+    {
+      keywords: ['気泡', 'ボイド', 'ひけ', 'ヒケ', '巣', 'エア', 'シルバー', 'シルバーストリーク'],
+      label: '気泡・ボイド・ひけ', icon: '💨', priority: 'medium',
+      causes: ['原材料の水分・揮発成分', '成形条件不適（射出速度・保圧）', '設計上の肉厚問題'],
+      direction: '材料乾燥管理と成形条件（射出・保圧）の最適化',
+      actions: [
+        '原材料の乾燥条件・水分率の確認と管理強化（乾燥機点検）',
+        '射出速度・保圧圧力・保圧時間の最適化',
+        'シリンダー温度・背圧の見直し',
+        '肉厚設計の見直し（リブ追加・肉盗みによる均一化）'
+      ],
+      checkpoints: ['材料乾燥記録の管理・確認', '成形条件の記録・再現性確認']
+    },
+    {
+      keywords: ['ウェルド', 'ウエルド', 'フロー', 'ショートショット', '充填不足', '未充填', '流れ'],
+      label: 'ウェルドライン・充填不良', icon: '🌊', priority: 'medium',
+      causes: ['成形温度・射出速度不足', 'ゲート配置・サイズの問題', '金型温度の低下'],
+      direction: '成形条件と金型・ゲート設計の最適化',
+      actions: [
+        '射出速度・樹脂温度・金型温度の管理値確認と調整',
+        'ゲートサイズ・位置の見直し（流動解析の活用）',
+        '金型温調システムの点検（詰まり・漏れ・配管確認）',
+        '保圧条件の最適化とエアベントの確認'
+      ],
+      checkpoints: ['成形条件変更履歴の確認', '流動解析結果との比較検討']
+    },
+    {
+      keywords: ['めっき', 'メッキ', 'コーティング', '塗装', '皮膜', '剥離', 'はがれ', '密着'],
+      label: 'めっき・塗装・表面処理不良', icon: '✨', priority: 'medium',
+      causes: ['素材表面の前処理不足', '処理液濃度・温度の管理不足', '密着性に影響する油脂・水分'],
+      direction: '前処理工程と処理液管理の見直し',
+      actions: [
+        '素材表面の脱脂・前処理工程の確認と強化',
+        '処理液（濃度・pH・温度）の管理値確認と調整',
+        '素材ロット・材質変更の有無確認',
+        'ラッキング方法・電流密度の適正化確認'
+      ],
+      checkpoints: ['処理液分析記録（日次・週次）の確認', '密着強度試験（クロスカット等）の実施']
+    },
+    {
+      keywords: ['組立', '組み立て', '締め忘れ', '取付', 'ネジ', '位置ずれ', '誤組', '逆組', '取付忘れ'],
+      label: '組立・組み付け不良', icon: '🔩', priority: 'high',
+      causes: ['作業標準の不徹底', 'ポカヨケ不足', '部品の互換性・識別問題'],
+      direction: 'ポカヨケ・作業標準の整備と工程内検査の強化',
+      actions: [
+        '作業標準書（SOP）の見直しと作業者への再教育実施',
+        'ポカヨケ（治具・センサー・画像検査）の導入・改善',
+        '組立順序・トルク管理の見直しとチェックシート整備',
+        '部品の識別（色分け・形状差別化・バーコード管理）の強化'
+      ],
+      checkpoints: ['作業観察（ゲンバゲンブツ）の実施', '工程FMEA・コントロールプランの見直し']
+    },
+    {
+      keywords: ['鋳造', 'ダイカスト', '砂', '引け', '収縮', '湯回り', '湯境', '鋳巣', 'ポロシティ'],
+      label: '鋳造欠陥（引け・湯回り不良）', icon: '🏭', priority: 'high',
+      causes: ['溶湯温度・注湯速度の管理不足', '金型温度・離型剤の管理不足', '設計上の肉厚・湯口問題'],
+      direction: '鋳造条件の最適化と金型管理の強化',
+      actions: [
+        '溶湯温度・保持時間の管理値確認と調整',
+        '金型温度（予熱・冷却水温度）の安定化',
+        '離型剤の種類・塗布量・塗布位置の見直し',
+        '湯口・湯道・押湯の設計見直し（流動解析活用）'
+      ],
+      checkpoints: ['鋳造条件記録（各サイクル）の管理', '金型温度分布の測定・可視化']
+    },
+    {
+      keywords: ['研磨', '加工', '切削', 'バーニッシュ', '面粗度', '粗さ', '仕上げ'],
+      label: '加工・研磨不良', icon: '🔄', priority: 'medium',
+      causes: ['工具摩耗', '加工条件（速度・送り量・切込み）の不適', '冷却・潤滑不足'],
+      direction: '工具管理と加工条件の最適化',
+      actions: [
+        '工具の定期交換・摩耗量測定の実施',
+        '切削速度・送り量・切込み量の管理値確認と最適化',
+        '冷却液（種類・濃度・流量・温度）の管理確認',
+        '加工順序・段取り手順の見直し'
+      ],
+      checkpoints: ['工具交換記録・使用寿命の管理', '表面粗さ測定記録の確認']
+    }
+  ];
+
+  function getCountermeasureAdvice(defectType) {
+    const lower = defectType.toLowerCase();
+    for (const item of COUNTERMEASURE_DB) {
+      if (item.keywords.some(kw => lower.includes(kw.toLowerCase()) || kw.toLowerCase().includes(lower))) {
+        return item;
+      }
+    }
+    return null;
+  }
+
+  function renderAdvicePanel() {
+    const area = document.getElementById('advice-content');
+
+    if (!records.length) {
+      area.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><p>データがありません。まずデータを入力またはインポートしてください。</p></div>';
+      return;
+    }
+
+    // 全不良を集計
+    const defMap = new Map();
+    let totalDefCount = 0;
+    records.forEach(r => {
+      r.defects.forEach(d => {
+        defMap.set(d.type, (defMap.get(d.type) || 0) + d.count);
+        totalDefCount += d.count;
+      });
+    });
+
+    if (!totalDefCount) {
+      area.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><p>不良データがありません。</p></div>';
+      return;
+    }
+
+    const sortedDefs = [...defMap.entries()].sort((a, b) => b[1] - a[1]);
+    const datesSorted = records.map(r => r.date).sort();
+    const dateRange = datesSorted.length > 1
+      ? datesSorted[0] + ' 〜 ' + datesSorted[datesSorted.length - 1]
+      : datesSorted[0];
+
+    let html = '';
+
+    // サマリーバナー
+    html += '<div class="advice-summary">' +
+      '<div class="advice-summary-title">📊 分析サマリー</div>' +
+      '<div class="advice-summary-stats">' +
+      '<span>不良種別数：<strong>' + sortedDefs.length + '種</strong></span>' +
+      '<span>総不良数：<strong>' + totalDefCount.toLocaleString() + '件</strong></span>' +
+      '<span>対象期間：<strong>' + dateRange + '</strong></span>' +
+      '</div>' +
+      '<div class="advice-hint">上位の不良種別から優先的に対策を実施することを推奨します（パレートの法則）。</div>' +
+      '</div>';
+
+    const topDefs = sortedDefs.slice(0, 10);
+    const unmatchedDefs = [];
+    const rankColors = ['#c53030', '#dd6b20', '#d69e2e'];
+
+    topDefs.forEach(function(entry, idx) {
+      const type = entry[0], count = entry[1];
+      const pct = (count / totalDefCount * 100).toFixed(1);
+      const advice = getCountermeasureAdvice(type);
+      const rank = idx + 1;
+      const rankColor = rankColors[idx] || '#718096';
+
+      if (advice) {
+        const priorityClass = advice.priority === 'high' ? 'priority-high' : 'priority-medium';
+        const priorityLabel = advice.priority === 'high' ? '優先度：高' : '優先度：中';
+
+        html += '<div class="advice-card">' +
+          '<div class="advice-card-header">' +
+          '<div class="advice-rank">' +
+          '<span class="advice-rank-num" style="color:' + rankColor + '">#' + rank + '</span>' +
+          '<span class="advice-defect-name">' + type + '</span>' +
+          '</div>' +
+          '<div class="advice-meta">' +
+          '<span class="advice-count">' + count.toLocaleString() + '件 (' + pct + '%)</span>' +
+          '<span class="advice-badge ' + priorityClass + '">' + priorityLabel + '</span>' +
+          '</div>' +
+          '</div>' +
+          '<div class="advice-bar-wrap"><div class="advice-bar" style="width:' + pct + '%"></div></div>' +
+          '<div class="advice-body">' +
+          '<div class="advice-section">' +
+          '<div class="advice-section-title">🎯 対策の方向性</div>' +
+          '<div class="advice-direction">' + advice.direction + '</div>' +
+          '</div>' +
+          '<div class="advice-section">' +
+          '<div class="advice-section-title">📋 想定される主な原因</div>' +
+          '<ul class="advice-list">' + advice.causes.map(function(c) { return '<li>' + c + '</li>'; }).join('') + '</ul>' +
+          '</div>' +
+          '<div class="advice-section">' +
+          '<div class="advice-section-title">✅ 具体的アクション</div>' +
+          '<ul class="advice-list action-list">' + advice.actions.map(function(a) { return '<li>' + a + '</li>'; }).join('') + '</ul>' +
+          '</div>' +
+          '<div class="advice-checkpoints">' +
+          '<div class="advice-section-title">🔎 チェックポイント</div>' +
+          '<div class="advice-check-row">' +
+          advice.checkpoints.map(function(cp) { return '<span class="advice-check-chip">' + cp + '</span>'; }).join('') +
+          '</div>' +
+          '</div>' +
+          '</div>' +
+          '</div>';
+      } else {
+        unmatchedDefs.push({ type: type, count: count, pct: pct, rank: rank });
+      }
+    });
+
+    // 汎用アドバイス（マッチしなかった種別）
+    if (unmatchedDefs.length > 0) {
+      const chips = unmatchedDefs.map(function(d) {
+        return '<span class="advice-unmatched-chip">#' + d.rank + ' ' + d.type + '（' + d.count + '件 ' + d.pct + '%）</span>';
+      }).join('');
+
+      html += '<div class="advice-card advice-card-generic">' +
+        '<div class="advice-card-header">' +
+        '<div class="advice-rank"><span class="advice-defect-name">その他の不良種別（汎用アドバイス）</span></div>' +
+        '</div>' +
+        '<div class="advice-body">' +
+        '<div style="margin-bottom:0.65rem;font-size:0.85rem;color:#718096">対象種別：' + chips + '</div>' +
+        '<div class="advice-section">' +
+        '<div class="advice-section-title">🎯 共通の対策方向性</div>' +
+        '<div class="advice-direction">4M（人・機械・材料・方法）の変化点確認と要因分析の実施</div>' +
+        '</div>' +
+        '<div class="advice-section">' +
+        '<div class="advice-section-title">✅ 推奨アクション</div>' +
+        '<ul class="advice-list action-list">' +
+        '<li>特性要因図（フィッシュボーン）による原因の洗い出し</li>' +
+        '<li>層別分析：シフト別・日付別・設備別の発生パターン確認</li>' +
+        '<li>発生工程の特定と現場観察（ゲンバゲンブツ）の実施</li>' +
+        '<li>過去の類似不良と対策事例のレビュー</li>' +
+        '<li>是正処置票（8D報告書等）の作成と効果確認</li>' +
+        '</ul>' +
+        '</div>' +
+        '<div class="advice-checkpoints">' +
+        '<div class="advice-section-title">🔎 チェックポイント</div>' +
+        '<div class="advice-check-row">' +
+        '<span class="advice-check-chip">4M変化点記録の確認</span>' +
+        '<span class="advice-check-chip">工程FMEA・コントロールプランの見直し</span>' +
+        '<span class="advice-check-chip">作業標準書の最新化</span>' +
+        '</div>' +
+        '</div>' +
+        '</div>' +
+        '</div>';
+    }
+
+    // 改善ステップフッター
+    html += '<div class="advice-action-plan">' +
+      '<div class="advice-section-title" style="font-size:0.95rem;margin-bottom:0.75rem">📌 改善活動の推奨ステップ</div>' +
+      '<div class="advice-steps">' +
+      '<div class="advice-step"><div class="advice-step-num">1</div><div><strong>現状把握</strong><br>パレート図で上位不良を特定・定量化</div></div>' +
+      '<div class="advice-step"><div class="advice-step-num">2</div><div><strong>原因分析</strong><br>特性要因図・5Whyで真因を追究</div></div>' +
+      '<div class="advice-step"><div class="advice-step-num">3</div><div><strong>対策立案</strong><br>上記アクションを参考に恒久対策を計画</div></div>' +
+      '<div class="advice-step"><div class="advice-step-num">4</div><div><strong>実施・効果確認</strong><br>トレンド図で対策後の効果を継続監視</div></div>' +
+      '<div class="advice-step"><div class="advice-step-num">5</div><div><strong>標準化・水平展開</strong><br>有効な対策を作業標準に織り込み</div></div>' +
+      '</div>' +
+      '</div>';
+
+    area.innerHTML = html;
+  }
+
+  // ===========================
+  //  Baseline Dashboard
+  // ===========================
+  function calcPeriodMetrics(recs) {
+    const totalDef  = recs.reduce((s, r) => s + r.totalDefects, 0);
+    const totalProd = recs.reduce((s, r) => s + (r.production || 0), 0);
+    const days = new Set(recs.map(r => r.date)).size;
+    const defMap = {};
+    recs.forEach(r => r.defects.forEach(d => { defMap[d.type] = (defMap[d.type] || 0) + d.count; }));
+    return {
+      totalDef, totalProd, days,
+      rate: totalProd > 0 ? totalDef / totalProd * 100 : null,
+      avgDaily: days > 0 ? totalDef / days : 0,
+      defMap
+    };
+  }
+
+  function renderBaselinePanel() {
+    const area = document.getElementById('baseline-content');
+    if (!records.length) {
+      area.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div><p>データがありません</p></div>';
+      return;
+    }
+
+    const today = new Date();
+    const daysBack = n => { const d = new Date(today); d.setDate(today.getDate() - n); return d.toISOString().split('T')[0]; };
+    const p7s   = daysBack(7);
+    const p37s  = daysBack(37);
+    const p97s  = daysBack(97);
+    const todayS = today.toISOString().split('T')[0];
+
+    const recs7  = records.filter(r => r.date >= p7s  && r.date <= todayS);
+    const recs30 = records.filter(r => r.date >= p37s && r.date <  p7s);
+    const recs90 = records.filter(r => r.date >= p97s && r.date <  p37s);
+
+    const m7  = calcPeriodMetrics(recs7);
+    const m30 = calcPeriodMetrics(recs30);
+    const m90 = calcPeriodMetrics(recs90);
+
+    const overallTarget = parseFloat(defectTargets.overall) || null;
+    const fmtRate = v => v !== null ? v.toFixed(2) + '%' : '--';
+
+    function diffTag(cur, base) {
+      if (base <= 0 || cur === 0) return '';
+      const d = (cur - base) / base * 100;
+      const cls = d > 5 ? 'diff-up' : d < -5 ? 'diff-down' : 'diff-flat';
+      const sym = d > 0 ? '▲' : '▼';
+      return '<div class="baseline-diff ' + cls + '">' + sym + ' 前期比 ' + (d > 0 ? '+' : '') + d.toFixed(0) + '%</div>';
+    }
+
+    function periodCard(label, m, isCurrent, compareM) {
+      const val  = m.rate !== null ? fmtRate(m.rate) : m.totalDef.toLocaleString() + '件';
+      const sub  = '日平均 ' + m.avgDaily.toFixed(1) + '件 / ' + m.days + '日分';
+      const diff = isCurrent ? diffTag(m.avgDaily, compareM.avgDaily) : '';
+      const tgt  = isCurrent && overallTarget !== null && m.rate !== null
+        ? '<div class="baseline-diff ' + (m.rate > overallTarget ? 'diff-up' : 'diff-down') + '">目標' + overallTarget + '% ' + (m.rate > overallTarget ? '超過⚠' : '達成✓') + '</div>'
+        : '';
+      return '<div class="baseline-period-card' + (isCurrent ? ' current' : '') + '">' +
+        '<div class="baseline-period-label">' + label + '</div>' +
+        '<div class="baseline-period-value">' + val + '</div>' +
+        '<div class="baseline-period-sub">' + sub + '</div>' +
+        diff + tgt + '</div>';
+    }
+
+    // Per-type table
+    const allTypes = [...new Set(records.flatMap(r => r.defects.map(d => d.type)))]
+      .sort((a, b) => (m7.defMap[b] || 0) - (m7.defMap[a] || 0));
+    const maxCount7 = Math.max(...allTypes.map(t => m7.defMap[t] || 0), 1);
+
+    let typeRows = '';
+    allTypes.slice(0, 15).forEach(type => {
+      const c7  = m7.defMap[type]  || 0;
+      const c30 = m30.defMap[type] || 0;
+      const c90 = m90.defMap[type] || 0;
+      const baseDays = (m30.days || 0) + (m90.days || 0);
+      const baseTotal = c30 + c90;
+      const baseAvg = baseDays > 0 ? baseTotal / baseDays : null;
+      const curAvg  = m7.days > 0 ? c7 / m7.days : 0;
+      const typeTgt = parseFloat((defectTargets.types || {})[type]) || null;
+
+      let devHtml = '';
+      if (baseAvg !== null && baseAvg > 0) {
+        const ratio = (curAvg - baseAvg) / baseAvg * 100;
+        const cls = ratio > 20 ? 'diff-up' : ratio < -20 ? 'diff-down' : 'diff-flat';
+        const sym = ratio > 0 ? '▲+' : '▼';
+        devHtml = '<span class="baseline-diff ' + cls + '" style="font-size:0.77rem">' + sym + Math.abs(ratio).toFixed(0) + '%</span>';
+      } else if (c7 > 0 && !baseAvg) {
+        devHtml = '<span class="diff-up" style="font-size:0.77rem">▲新規</span>';
+      } else {
+        devHtml = '<span style="color:#a0aec0;font-size:0.77rem">--</span>';
+      }
+      const barPct = Math.round(c7 / maxCount7 * 100);
+      const barColor = typeTgt && c7 > typeTgt ? '#e53e3e' : '#3182ce';
+      const tgtCell = typeTgt !== null
+        ? '<span style="font-size:0.8rem;' + (c7 > typeTgt ? 'color:#c53030;font-weight:700' : 'color:#276749') + '">' + (c7 > typeTgt ? '⚠ ' : '✓ ') + c7 + '/' + typeTgt + '件/日</span>'
+        : '<span style="color:#a0aec0;font-size:0.77rem">未設定</span>';
+
+      typeRows += '<div class="baseline-type-row">' +
+        '<span style="font-weight:600">' + type + '</span>' +
+        '<span style="text-align:right">' + c7 + '</span>' +
+        '<span style="text-align:right;color:#718096">' + c30 + '</span>' +
+        '<div class="baseline-bar-cell"><div class="baseline-mini-bar"><div class="baseline-mini-fill" style="width:' + barPct + '%;background:' + barColor + '"></div></div>' + devHtml + '</div>' +
+        '<div>' + tgtCell + '</div>' +
+        '</div>';
+    });
+
+    // Target form
+    const allDefTypes = [...new Set(records.flatMap(r => r.defects.map(d => d.type)))].sort();
+    let targetFormRows = '<div class="target-row">' +
+      '<label>全体不良率 目標</label>' +
+      '<input type="number" class="target-input" step="0.01" min="0" max="100" value="' + (defectTargets.overall || '') + '" onchange="updateTarget(\'overall\',this.value)" style="width:68px;padding:0.3rem 0.45rem;border:2px solid #e2e8f0;border-radius:6px;font-size:0.85rem;text-align:right;outline:none">' +
+      '<span class="target-unit">%</span></div>';
+
+    allDefTypes.slice(0, 12).forEach(function(type) {
+      const safeType = type.replace(/'/g, "\\'");
+      const curVal   = (defectTargets.types || {})[type] || '';
+      targetFormRows += '<div class="target-row">' +
+        '<label title="' + type + '">' + type + '</label>' +
+        '<input type="number" step="1" min="0" value="' + curVal + '" onchange="updateTypeTarget(\'' + safeType + '\',this.value)" style="width:68px;padding:0.3rem 0.45rem;border:2px solid #e2e8f0;border-radius:6px;font-size:0.85rem;text-align:right;outline:none">' +
+        '<span class="target-unit">件/日</span></div>';
+    });
+
+    area.innerHTML =
+      '<div class="baseline-period-grid">' +
+      periodCard('直近 7 日', m7, true, m30) +
+      periodCard('先月（8〜37日前）', m30, false, m90) +
+      periodCard('3ヶ月前（38〜97日前）', m90, false, {}) +
+      '</div>' +
+
+      '<div style="background:white;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07);padding:1rem;margin-bottom:1.25rem">' +
+      '<div class="card-title" style="margin-bottom:0.75rem">📋 不良種別ベースライン比較</div>' +
+      '<div class="baseline-type-row bl-header">' +
+      '<span>不良種別</span><span>直近7日</span><span>先月</span><span>ベースライン乖離</span><span>目標 vs 実績</span>' +
+      '</div>' +
+      (typeRows || '<div class="empty-state" style="padding:1.5rem"><p>データがありません</p></div>') +
+      '</div>' +
+
+      '<div style="background:white;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07);padding:1rem">' +
+      '<div class="card-title" style="margin-bottom:0.6rem">🎯 管理目標値の設定</div>' +
+      '<div style="font-size:0.78rem;color:#718096;margin-bottom:0.75rem">目標値を入力すると比較表でアラート表示されます（空白＝目標なし）。値は自動保存されます。</div>' +
+      '<div class="target-form-grid">' + targetFormRows + '</div>' +
+      '</div>';
+  }
+
+  function updateTarget(key, value) {
+    defectTargets[key] = value; saveTargets();
+  }
+  function updateTypeTarget(type, value) {
+    if (!defectTargets.types) defectTargets.types = {};
+    defectTargets.types[type] = value; saveTargets();
+  }
+
+  // ===========================
+  //  5Why Records
+  // ===========================
+  function escH(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function render5WhyPanel() {
+    const area = document.getElementById('fivewhy-content');
+    const filterEl = document.getElementById('fivewhy-filter');
+    const fv = filterEl ? filterEl.value : 'all';
+    let data = fiveWhyRecords.slice().sort((a, b) => b.createdAt - a.createdAt);
+    if (fv !== 'all') data = data.filter(r => r.status === fv);
+
+    if (!data.length) {
+      area.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><p>' +
+        (fv !== 'all' ? 'この状態の記録がありません' : '5Why記録がありません。「＋ 新規作成」から追加してください。') +
+        '</p></div>';
+      return;
+    }
+
+    const sLabel = { open: '未着手', 'in-progress': '対応中', done: '完了' };
+    const sBadge = { open: 'badge-status-open', 'in-progress': 'badge-status-in-progress', done: 'badge-status-done' };
+
+    area.innerHTML = data.map(function(rec) {
+      const linked = rec.recordId ? records.find(r => r.id === rec.recordId) : null;
+      const linkedLabel = linked ? '📎 ' + linked.date + (linked.shift ? ' ' + linked.shift : '') : '';
+
+      const whyHtml = rec.whys.filter(function(w) { return w.trim(); }).map(function(w, i) {
+        return '<div class="why-item' + (i > 0 ? ' why-indent' : '') + '">' +
+          '<span class="why-label">なぜ' + (i + 1) + '</span>' +
+          '<span class="why-text">' + escH(w) + '</span></div>';
+      }).join('');
+
+      return '<div class="fivewhy-card status-' + rec.status + '" id="fw-card-' + rec.id + '">' +
+        '<div class="fivewhy-header" onclick="toggleFW(' + rec.id + ')">' +
+        '<span class="badge ' + sBadge[rec.status] + '">' + sLabel[rec.status] + '</span>' +
+        '<div class="fivewhy-title">' + escH(rec.title || '（タイトルなし）') + '</div>' +
+        '<div class="fivewhy-meta">' +
+        (rec.defectType ? '<span>🔴 ' + escH(rec.defectType) + '</span>' : '') +
+        (linkedLabel ? '<span>' + linkedLabel + '</span>' : '') +
+        '<span>' + new Date(rec.createdAt).toLocaleDateString('ja-JP') + '</span>' +
+        '</div>' +
+        '</div>' +
+        '<div class="fivewhy-body" id="fw-body-' + rec.id + '">' +
+        '<div class="why-chain">' + (whyHtml || '<span style="color:#a0aec0;font-size:0.85rem">（なぜなぜ未入力）</span>') + '</div>' +
+        '<div class="countermeasure-box">' +
+        '<div class="countermeasure-title">✅ 対策・処置</div>' +
+        '<div class="countermeasure-content">' + escH(rec.countermeasure || '（未入力）') + '</div>' +
+        '<div class="countermeasure-meta">' +
+        (rec.assignee ? '<span>👤 担当：' + escH(rec.assignee) + '</span>' : '') +
+        (rec.deadline ? '<span>📅 期限：' + rec.deadline + '</span>' : '') +
+        '</div></div>' +
+        '<div class="fivewhy-actions">' +
+        '<button class="btn btn-sm btn-secondary" onclick="open5WhyEditor(' + rec.id + ')">✏️ 編集</button>' +
+        '<button class="btn btn-sm btn-danger" onclick="delete5Why(' + rec.id + ')">削除</button>' +
+        '</div></div></div>';
+    }).join('');
+  }
+
+  function toggleFW(id) {
+    const b = document.getElementById('fw-body-' + id);
+    if (b) b.classList.toggle('open');
+  }
+
+  function new5WhyFromRecord(recordId) {
+    const rec = records.find(r => r.id === recordId);
+    if (!rec) return;
+    open5WhyEditor(null, {
+      recordId: rec.id,
+      defectType: rec.defects.length > 0 ? rec.defects[0].type : '',
+      title: rec.date + (rec.shift ? ' ' + rec.shift : '') + '　' + (rec.defects.length > 0 ? rec.defects[0].type : '') + '不良'
+    });
+  }
+
+  function open5WhyEditor(id, prefill) {
+    editingFiveWhyId = id || null;
+    const existing = id ? fiveWhyRecords.find(r => r.id === id) : null;
+    const data = existing || prefill || {};
+
+    // Build record select options
+    const recOptions = records.map(function(r) {
+      const defStr = r.defects.slice(0, 2).map(function(d) { return d.type; }).join('・');
+      return '<option value="' + r.id + '"' + (data.recordId === r.id ? ' selected' : '') + '>' +
+        r.date + (r.shift ? ' ' + r.shift : '') + ' (' + defStr + ')</option>';
+    }).join('');
+
+    const whys = (data.whys || []).concat(['','','','','']).slice(0, 5);
+    const whyHtml = whys.map(function(w, i) {
+      return (i > 0 ? '<div class="why-arrow-row">↓</div>' : '') +
+        '<div class="why-input-row">' +
+        '<div class="why-input-label">なぜ ' + (i + 1) + '</div>' +
+        '<textarea id="modal-why-' + i + '" placeholder="なぜ' + (i + 1) + 'を記入...">' + escH(w) + '</textarea>' +
+        '</div>';
+    }).join('');
+
+    document.getElementById('modal-title-input').value    = data.title || '';
+    document.getElementById('modal-defect-type').value    = data.defectType || '';
+    document.getElementById('modal-record-select').innerHTML = '<option value="">（紐付けなし）</option>' + recOptions;
+    document.getElementById('modal-record-select').value  = data.recordId || '';
+    document.getElementById('modal-whys-container').innerHTML = whyHtml;
+    document.getElementById('modal-countermeasure').value = data.countermeasure || '';
+    document.getElementById('modal-assignee').value       = data.assignee || '';
+    document.getElementById('modal-deadline').value       = data.deadline || '';
+    document.getElementById('modal-status').value         = data.status || 'open';
+    document.getElementById('fivewhy-modal').classList.add('open');
+  }
+
+  function close5WhyEditor() {
+    document.getElementById('fivewhy-modal').classList.remove('open');
+    editingFiveWhyId = null;
+  }
+
+  function saveFiveWhyRecord() {
+    const title = document.getElementById('modal-title-input').value.trim();
+    if (!title) { showAlert('タイトルを入力してください', 'error'); return; }
+
+    const whys = [0,1,2,3,4].map(function(i) {
+      const el = document.getElementById('modal-why-' + i);
+      return el ? el.value.trim() : '';
+    });
+
+    const recIdVal = document.getElementById('modal-record-select').value;
+    const orig = editingFiveWhyId ? fiveWhyRecords.find(r => r.id === editingFiveWhyId) : null;
+    const rec = {
+      id:             editingFiveWhyId || Date.now(),
+      createdAt:      orig ? orig.createdAt : Date.now(),
+      title,
+      defectType:     document.getElementById('modal-defect-type').value.trim(),
+      recordId:       recIdVal ? parseInt(recIdVal, 10) : null,
+      whys,
+      countermeasure: document.getElementById('modal-countermeasure').value.trim(),
+      assignee:       document.getElementById('modal-assignee').value.trim(),
+      deadline:       document.getElementById('modal-deadline').value,
+      status:         document.getElementById('modal-status').value
+    };
+
+    if (editingFiveWhyId) {
+      const idx = fiveWhyRecords.findIndex(r => r.id === editingFiveWhyId);
+      if (idx >= 0) fiveWhyRecords[idx] = rec; else fiveWhyRecords.push(rec);
+    } else {
+      fiveWhyRecords.push(rec);
+    }
+
+    saveFiveWhyData();
+    close5WhyEditor();
+    if (document.getElementById('panel-fivewhy').classList.contains('active')) render5WhyPanel();
+    showAlert('✓ 5Why記録を保存しました', 'success');
+  }
+
+  function delete5Why(id) {
+    if (!confirm('この5Why記録を削除しますか？')) return;
+    fiveWhyRecords = fiveWhyRecords.filter(r => r.id !== id);
+    saveFiveWhyData();
+    render5WhyPanel();
+    showAlert('削除しました', 'success');
+  }
+
+  // ===========================
+  //  Chart helpers
+  // ===========================
+  function showChartEmpty(canvas, msg) {
+    canvas.style.display = 'none';
+    let el = canvas.parentElement.querySelector('.chart-empty');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'empty-state chart-empty';
+      canvas.parentElement.appendChild(el);
+    }
+    el.innerHTML = '<div class="empty-icon">📭</div><p>' + msg + '</p>';
+    el.style.display = 'block';
+  }
+
+  function hideChartEmpty(canvas) {
+    canvas.style.display = 'block';
+    const el = canvas.parentElement.querySelector('.chart-empty');
+    if (el) el.style.display = 'none';
+  }
+</script>
+</body>
+</html>
